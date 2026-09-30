@@ -119,7 +119,7 @@ Un valor puede ser `{ "darwin": …, "default": … }` para que el mismo perfil 
 
 ## Si algo no va
 
-Dos pruebas **reales** que te dicen qué pasa y qué ajuste cambiar (se ejecutan desde el código, ver [Ejecutar desde el código](#ejecutar-desde-el-código)):
+Una página de pruebas (`python main.py playground`: botones, arrastre, scroll, texto y casillas que muestran cada evento) y dos comprobaciones **reales** que te dicen qué pasa y qué ajuste cambiar (se ejecutan desde el código, ver [Ejecutar desde el código](#ejecutar-desde-el-código)):
 
 ```bash
 python main.py check-input   # cursor, clics, arrastre, teclas, volumen y abrir apps: ¿obedece el sistema?

@@ -73,4 +73,5 @@ jobs:
         with:
           files: artifacts/*
           body_path: .github/release-body.md
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}   # 0.x = versión preliminar
           generate_release_notes: true

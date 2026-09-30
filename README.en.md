@@ -82,7 +82,7 @@ Voice model (~140 MB) downloads the first time voice is enabled (internet needed
 
 ## Troubleshooting
 
-Two **real** checks that tell you what is happening and which setting to change (run from source):
+A test page (`python main.py playground`: buttons, drag, scroll, text and tiles that show every event) and two **real** checks that tell you what is happening and which setting to change (run from source):
 
 ```bash
 python main.py check-input   # cursor, clicks, drag, keys, volume, opening apps: does the OS obey?
