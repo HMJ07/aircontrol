@@ -4,6 +4,7 @@ import os
 import time
 
 import cv2
+import numpy as np
 
 from . import config, ipc, system
 from .actions import ActionError, parse_action
@@ -20,7 +21,8 @@ PREVIEW_SIZE = (480, 360)
 RESULT_SECONDS = 3.5
 PUBLISH_EVERY = 0.5
 RELOAD_EVERY = 0.5
-MAX_GAZE_RMS_OK = 350               # px de error medio por encima del cual se avisa de calibración poco fiable
+MAX_GAZE_RMS_OK = 250               # px de error medio por encima del cual se avisa de calibración poco fiable
+MAX_GAZE_RMS_SAVE = 500             # por encima, la calibración se descarta (peor que no tener ninguna)
 
 
 def keyboard_rect(screen):
@@ -198,14 +200,24 @@ class Engine:
             self.settings.apply(obj.region)
             cal["message"] = "Región de la mano guardada" if not errors else "No se pudo guardar: " + "; ".join(errors)
         else:
-            write_text_atomic(config.GAZE_PATH, obj.model.to_json())
-            self.ctl.set_gaze_model(obj.model)
             rms = obj.model.rms
-            cal["message"] = (f"Mirada calibrada · error medio ≈ {rms:.0f} px" if rms is not None else "Mirada calibrada")
-            if rms is not None and rms > MAX_GAZE_RMS_OK:
-                cal["message"] += " (poco fiable: repite con buena luz y la cabeza centrada)"
+            try:                                                   # datos crudos: permiten diagnosticar sin repetir nada
+                np.savez_compressed(config.GAZE_SAMPLES_PATH, feats=np.array(obj.feats), targets=np.array(obj.targets),
+                                    groups=np.array(obj.groups), ears=np.array(obj.ears), screen=np.array(self.screen))
+            except OSError:
+                pass
+            if rms is not None and rms > MAX_GAZE_RMS_SAVE:
+                cal["message"] = (f"Calibración descartada: error medio ≈ {rms:.0f} px (se guardaría algo peor que nada). "
+                                  "Repite con buena luz, la cara de frente a la cámara y mirando fijo cada punto sin mover la cabeza.")
+            else:
+                write_text_atomic(config.GAZE_PATH, obj.model.to_json())
+                self.ctl.set_gaze_model(obj.model)
+                cal["message"] = (f"Mirada calibrada · error medio ≈ {rms:.0f} px" if rms is not None else "Mirada calibrada")
+                if rms is not None and rms > MAX_GAZE_RMS_OK:
+                    cal["message"] += " (poco fiable: repite con buena luz y la cabeza centrada)"
         cal["done_at"] = now
-        self.log(("🎯 " if not obj.error else "⚠️  ") + cal["message"])
+        bad = obj.error or cal["message"].startswith(("Calibración descartada", "No se pudo"))
+        self.log(("⚠️  " if bad else "🎯 ") + cal["message"])
 
     def _calibration_frame(self, frame, hand, face, aspect, now):
         cal = self.cal

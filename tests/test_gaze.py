@@ -110,6 +110,69 @@ class CalibrationTests(unittest.TestCase):
         self.assertTrue(0 <= x <= SCREEN[0] - 1 and 0 <= y <= SCREEN[1] - 1)
 
 
+def noisy_calibration(noise, head_drift, outliers, seed):
+    """Calibración con ruido de iris, cabeza algo distinta en cada punto y fotogramas atípicos (saltos del landmark)."""
+    rng = np.random.default_rng(seed)
+    cal, t = GazeCalibration(SCREEN), 0.0
+    while not cal.done:
+        sx, sy = cal.target_px()
+        feats, ear = extract_features(looking_at(sx / SCREEN[0], sy / SCREEN[1], rng, noise))
+        feats = feats.copy()
+        if rng.random() < outliers:
+            feats += rng.normal(0, 0.15, 6)
+        feats[4] += np.sin(cal.index * 1.7) * head_drift
+        feats[5] += np.cos(cal.index * 1.3) * head_drift
+        cal.update(feats, ear, t)
+        t += 1 / 30
+    return cal
+
+
+class RobustFitTests(unittest.TestCase):
+    def test_outlier_frames_are_trimmed_per_point(self):
+        from aircontrol.gaze import trim_outliers
+        rng = np.random.default_rng(0)
+        feats = rng.normal(0, 0.01, (60, 6))
+        groups = np.repeat([0, 1], 30)
+        feats[5] += 1.0                                                     # un salto del landmark en el punto 0
+        feats[40] -= 1.0                                                    # y otro en el punto 1
+        keep = trim_outliers(feats, groups)
+        self.assertFalse(keep[5])
+        self.assertFalse(keep[40])
+        self.assertGreater(keep.sum(), 50)
+
+    def test_trim_never_empties_a_point(self):
+        from aircontrol.gaze import trim_outliers
+        feats = np.random.default_rng(1).uniform(-1, 1, (30, 6))           # datos sin estructura: nada se descarta del todo
+        self.assertGreaterEqual(trim_outliers(feats, np.zeros(30, int)).sum(), 12)
+
+    def test_realistic_noise_stays_usable_not_hundreds_of_pixels(self):
+        """Regresión: con ruido, atípicos y cabeza que se mueve, el modelo cuadrático daba ~300-2000 px de error."""
+        for noise, drift, outliers in ((0.01, 0.01, 0.05), (0.02, 0.02, 0.10)):
+            rms = [noisy_calibration(noise, drift, outliers, s).model.rms for s in range(3)]
+            self.assertLess(max(rms), 130, (noise, rms))
+
+    def test_picks_linear_model_for_linear_data_and_clamps_extrapolation(self):
+        cal = noisy_calibration(0.02, 0.02, 0.1, 0)
+        self.assertFalse(cal.model.quad)
+        x, y = cal.model.predict(extract_features(face(h=50, v=-50))[0])       # una cara absurda no sale de la pantalla
+        self.assertTrue(0 <= x < SCREEN[0] and 0 <= y < SCREEN[1])
+
+    def test_corners_do_not_dominate_the_reported_error(self):
+        cal = noisy_calibration(0.02, 0.02, 0.1, 1)
+        self.assertLessEqual(cal.model.rms, cal.model.rms_all + 1e-6)
+
+    def test_json_keeps_model_kind_and_old_files_still_load(self):
+        import json
+        model = noisy_calibration(0.01, 0.01, 0.05, 2).model
+        again = GazeModel.from_json(model.to_json())
+        self.assertEqual(again.quad, model.quad)
+        feats, _ = extract_features(looking_at(0.4, 0.4))
+        self.assertEqual(again.predict(feats), model.predict(feats))
+        old = json.loads(model.to_json())
+        old.pop("quad"); old.pop("rms_all")                                 # fichero de una versión anterior
+        self.assertTrue(GazeModel.from_json(json.dumps(old)).quad)
+
+
 class DwellTests(unittest.TestCase):
     def test_clicks_after_dwell_then_needs_to_leave(self):
         d, fired = DwellClicker(1.0, 50), []

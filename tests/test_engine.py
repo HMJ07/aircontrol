@@ -28,6 +28,7 @@ def sandbox():
                mock.patch.object(config, "PROFILES_PATH", d / "profiles.json"),
                mock.patch.object(config, "GESTURES_PATH", d / "gestures.json"),
                mock.patch.object(config, "GAZE_PATH", d / "gaze.json"),
+               mock.patch.object(config, "GAZE_SAMPLES_PATH", d / "gaze_samples.npz"),
                mock.patch.object(ipc, "CONTROL_PATH", d / "control.json"),
                mock.patch.object(ipc, "STATE_PATH", d / "state.json")]
     for p in patches:
@@ -221,8 +222,9 @@ class CalibrationFlowTests(unittest.TestCase):
             eng = make(face_fn=face)
             self.assertIsNone(eng.ctl.gaze)
             eng.command("calibrate:gaze")
-            t = self.drive(eng, 25)
+            t = self.drive(eng, 30)
             self.assertIsNotNone(eng.ctl.gaze)
+            self.assertTrue((d / "gaze_samples.npz").exists())          # datos crudos guardados para diagnosticar
             self.assertTrue((d / "gaze.json").exists())
             self.assertIn("error medio", eng.cal["message"] if eng.cal else "error medio")
             self.drive(eng, 6, t0=t)
@@ -232,6 +234,29 @@ class CalibrationFlowTests(unittest.TestCase):
             eng.step(FRAME.copy(), 100.0)
             eng.step(FRAME.copy(), 100.1)
             self.assertTrue(any(c[0] == "move" for c in eng.backend.calls))
+
+    def test_garbage_gaze_calibration_is_discarded_not_activated(self):
+        """Caras sin relación con el punto mirado: el error sale enorme, no se activa ni se pisa un modelo bueno."""
+        with sandbox() as d:
+            rng = np.random.default_rng(3)
+            eng = make(face_fn=lambda ts: looking_at(rng.uniform(0, 1), rng.uniform(0, 1)))
+            eng.command("calibrate:gaze")
+            self.drive(eng, 30)
+            self.assertIsNone(eng.ctl.gaze)
+            self.assertFalse((d / "gaze.json").exists())
+            self.assertTrue((d / "gaze_samples.npz").exists())             # pero los datos se guardan para verlos
+
+    def test_bad_calibration_keeps_the_previous_good_model(self):
+        from tests.test_gaze import run_calibration
+        with sandbox() as d:
+            good = run_calibration().model.to_json()
+            (d / "gaze.json").write_text(good)
+            rng = np.random.default_rng(4)
+            eng = make(face_fn=lambda ts: looking_at(rng.uniform(0, 1), rng.uniform(0, 1)))
+            eng.command("calibrate:gaze")
+            self.drive(eng, 30)
+            self.assertEqual((d / "gaze.json").read_text(), good)
+            self.assertIsNotNone(eng.ctl.gaze)
 
     def test_escape_cancels_calibration_without_saving(self):
         with sandbox() as d:
