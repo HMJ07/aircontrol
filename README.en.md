@@ -64,17 +64,20 @@ A **menu-bar icon** (macOS) or **tray icon** (Windows) appears: pause, switch be
 | ✌️ index + middle extended | scroll with vertical hand movement |
 | 🖐️ / ✊ | rest: the cursor is left alone |
 | ✊ **held 1.2 s** | **pause / resume** all control (always available) |
+| 🤙 **pinky only, 0.8 s** | **open / close the air keyboard** (hand only, no menus) |
 | 👍 · palm swipe | per-app configurable actions (play/pause, next slide…) |
 
 ## Features
 
 - **🖐️ Hand mouse** — move, click, double click, right click, drag and scroll, with [One-Euro](https://gery.casiez.net/1euro/) smoothing (fluid, jitter-free).
 - **👁️ Gaze mouse** — cursor from iris + head pose, guided 9-point calibration reporting the mean error in pixels. Click by dwell, long blink or pinch.
-- **⌨️ Air keyboard** — on-screen keyboard with word suggestions, driven by hand (pinch) or gaze (dwell).
+- **⌨️ Air keyboard** — on-screen keyboard with **always-visible digits**, word suggestions and a strip showing what you typed and into which app. Open it with 🤙; drive it by hand (pinch) or gaze (dwell).
 - **🎙️ Local voice** — "open Safari", "click", "type hello…", "scroll down". [Whisper](https://github.com/SYSTRAN/faster-whisper) on your machine; common commands resolve instantly by rules (Spanish and English); [Ollama](https://ollama.com) is an optional fallback that only *proposes* an action as text, validated against the known action list.
 - **✋ Custom gestures** — teach a gesture from a few samples and bind it to an action or shortcut.
 - **🗂️ Per-app profiles** — the same gesture does different things in the browser, a slideshow or a video player.
 - **Settings page** — sliders for every threshold, gestures, training, calibrations and a visual profile editor. No files to edit.
+
+**Using the air keyboard:** (1) click the field you want to type in; (2) open it with 🤙, the menu-bar icon, voice ("teclado") or `k` — AirControl returns focus to that app and shows *"Escribiendo en: …"* with your last keystrokes; (3) hand: point and **pinch**; gaze: hold your look on a key ~1 s; (4) digits are the top row, `123` opens symbols, ⇧ capitalizes the next letter; (5) ✕ or 🤙 closes it.
 
 Actions: `key:mod+c` (`mod` = ⌘ on macOS, Ctrl on Windows) · `click` · `right_click` · `double_click` · `scroll:down:5` · `media:play_pause|next|prev|volume_up|volume_down|mute` · `open:Safari` · `open:https://…` · `text:hello` · `pause` / `resume` · `mode:hand|gaze|toggle` · `keyboard` · `voice`.
 

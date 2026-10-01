@@ -34,6 +34,11 @@ DEFAULT_PROFILES = {
 }
 
 
+# Acciones que existen aunque el perfil del usuario (creado con una versión anterior) no las mencione. Un perfil las puede
+# redefinir; no las borra. 🤙 abre y cierra el teclado aéreo: así siempre hay una forma de llegar a él con solo la mano.
+FALLBACKS = {"pinky_up": "keyboard"}
+
+
 class Profiles:
     def __init__(self, data=None):
         self.data = data or DEFAULT_PROFILES
@@ -79,4 +84,6 @@ class Profiles:
         for _, match, bindings in self._profiles:
             if any(m in app for m in match) and gesture in bindings:
                 return bindings[gesture]
-        return self._default.get(gesture)
+        if gesture in self._default:
+            return self._default[gesture]
+        return parse_action(FALLBACKS[gesture]) if gesture in FALLBACKS else None

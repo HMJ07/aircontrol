@@ -113,6 +113,38 @@ class KeyboardModeTests(unittest.TestCase):
         self.assertIn(("text", "' '"), bed.calls("text"))
         self.assertEqual(bed.calls("click"), [])                              # la permanencia del ratón no dispara
 
+    def test_opening_the_keyboard_returns_focus_to_the_app_you_type_in(self):
+        bed = Bed()
+        bed.ctl.set_keyboard(True)
+        self.assertIn(("focus", "Terminal"), bed.backend.calls)       # app_provider de Bed devuelve "Terminal"
+        self.assertEqual(bed.ctl.keyboard.target, "Terminal")
+        before = len(bed.backend.calls)
+        bed.ctl.set_keyboard(False)
+        self.assertEqual(len(bed.backend.calls), before)              # al cerrar no se toca el foco
+
+    def test_no_focus_call_when_target_is_unknown(self):
+        bed = Bed()
+        bed.ctl.app_provider = lambda: ""
+        bed.ctl.set_keyboard(True)
+        self.assertFalse([c for c in bed.backend.calls if c[0] == "focus"])
+
+    def test_pinky_up_opens_and_closes_the_keyboard_after_hold(self):
+        from tests.handfactory import hand
+        bed = Bed()
+        bed.feed(hand(pinky=1), None, 15)                              # 0,5 s: aún no
+        self.assertFalse(bed.status.keyboard)
+        bed.feed(hand(pinky=1), None, 20)                              # >0,8 s
+        self.assertTrue(bed.status.keyboard)
+        bed.feed(None, None, 60)                                       # soltar y esperar al respiro
+        bed.feed(hand(pinky=1), None, 30)
+        self.assertFalse(bed.status.keyboard)                          # el mismo gesto lo cierra
+
+    def test_pinky_up_does_not_move_the_cursor_or_click(self):
+        from tests.handfactory import hand
+        bed = Bed()
+        bed.feed(hand(pinky=1), None, 40)
+        self.assertEqual(bed.calls("move", "click", "press"), [])
+
     def test_close_key_closes_keyboard(self):
         bed = Bed()
         bed.ctl.set_keyboard(True)

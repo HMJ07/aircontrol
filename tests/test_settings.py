@@ -117,3 +117,14 @@ class AtomicWriteTests(unittest.TestCase):
         stop.set()
         t.join()
         self.assertEqual(bad, [])
+
+
+class FocusAppTests(unittest.TestCase):
+    def test_macos_uses_open_dash_a_and_ignores_empty_names(self):
+        from aircontrol import system
+        with mock.patch.object(system.sys, "platform", "darwin"), mock.patch("subprocess.Popen") as popen:
+            self.assertTrue(system.focus_app("Safari"))
+            self.assertEqual(popen.call_args[0][0], ["open", "-a", "Safari"])
+            popen.reset_mock()
+            self.assertFalse(system.focus_app(""))
+            popen.assert_not_called()

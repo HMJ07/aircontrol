@@ -1,5 +1,5 @@
 """Backends de entrada: PynputBackend (real, macOS y Windows) y DryRunBackend (solo registra)."""
-from . import active_app, open_target, screen_size
+from . import active_app, focus_app, open_target, screen_size
 
 BUTTONS = ("left", "right")
 
@@ -22,6 +22,7 @@ class InputBackend:
     def type_text(self, text): raise NotImplementedError
     def media(self, name): raise NotImplementedError
     def open_target(self, target): open_target(target)
+    def focus_app(self, name): return focus_app(name)
 
     def apply(self, event):
         """Aplica un evento de AirMouse: ("move", x, y) · ("click", botón, n) · ("press"/"release", botón) · ("scroll", dx, dy)."""
@@ -51,6 +52,7 @@ class DryRunBackend(InputBackend):
     def type_text(self, text): self._note("text", repr(text))
     def media(self, name): self._note("media", name)
     def open_target(self, target): self._note("open", target)
+    def focus_app(self, name): self._note("focus", name); return True
 
 
 class PynputBackend(InputBackend):

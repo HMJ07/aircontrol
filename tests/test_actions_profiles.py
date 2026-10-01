@@ -93,6 +93,18 @@ class ProfilesTests(unittest.TestCase):
         self.assertEqual(self.profiles.profile_name("Terminal"), "default")
         self.assertEqual(self.profiles.profile_name(None), "default")
 
+    def test_pinky_up_opens_keyboard_even_with_an_old_profile_file(self):
+        old = {"default": {"thumbs_up": "click"}, "profiles": []}              # perfil de una versión anterior
+        self.assertEqual(Profiles(old).resolve("pinky_up", "Safari").kind, "keyboard")
+        self.assertEqual(self.profiles.resolve("pinky_up", "Terminal").kind, "keyboard")
+
+    def test_user_can_override_the_fallback_and_unknown_gestures_stay_unbound(self):
+        mine = {"default": {"pinky_up": "voice"}, "profiles": []}
+        self.assertEqual(Profiles(mine).resolve("pinky_up", "x").kind, "voice")
+        app_level = {"default": {}, "profiles": [{"name": "X", "match": ["x"], "bindings": {"pinky_up": "mode:gaze"}}]}
+        self.assertEqual(Profiles(app_level).resolve("pinky_up", "x").kind, "mode")
+        self.assertIsNone(self.profiles.resolve("inventado", "x"))
+
     def test_bad_bindings_are_reported_not_fatal(self):
         data = {"default": {"a": "baila"}, "profiles": [{"name": "X", "match": ["x"], "bindings": {"b": "key:ctrl+"}}]}
         p = Profiles(data)

@@ -53,6 +53,10 @@ class WindowsInputTests(unittest.TestCase):
         for vk in (0x11, 0x10):                                              # VK_CONTROL, VK_SHIFT
             self.assertEqual(self.user32.GetAsyncKeyState(vk) & 0x8000, 0)
 
+    def test_focus_app_returns_false_for_a_program_that_is_not_running(self):
+        self.assertFalse(self.system.focus_app("no_existe_este_programa.exe"))
+        self.assertFalse(self.system.focus_app(""))
+
     def test_beep_is_non_blocking(self):
         t = time.time()
         self.system.beep()

@@ -66,6 +66,7 @@ Al abrirla aparece un **icono en la barra de menús** (macOS) o en la **bandeja*
 | ✌️ índice y corazón extendidos | scroll con el movimiento vertical de la mano |
 | 🖐️ / ✊ | reposo: el cursor no se toca |
 | ✊ **sostenido 1,2 s** | **pausa / reanuda** todo el control (siempre disponible) |
+| 🤙 **meñique solo, 0,8 s** | **abre / cierra el teclado aéreo** (solo con la mano, sin menús) |
 | 👍 · deslizar la palma | acciones configurables por aplicación (p. ej. reproducir/pausar, pasar diapositiva) |
 
 ## Qué puede hacer
@@ -78,7 +79,7 @@ Al abrirla aparece un **icono en la barra de menús** (macOS) o en la **bandeja*
 
 **👁️ Ratón con la mirada** — cursor con el iris y la cabeza, calibración guiada de 9 puntos con el error medio en píxeles. Clic por permanencia, parpadeo largo o pellizco.
 
-**⌨️ Teclado aéreo** — teclado en pantalla con sugerencias de palabras, manejable con la mano (pellizco) o con la mirada (permanencia).
+**⌨️ Teclado aéreo** — teclado en pantalla con **números siempre visibles**, sugerencias de palabras y una franja que muestra lo que escribes y en qué app. Se abre con 🤙 y se maneja con la mano (pellizco) o la mirada (permanencia).
 
 </td>
 <td width="50%" valign="top">
@@ -103,6 +104,14 @@ Todo se configura desde la página de ajustes, sin editar ficheros:
 <img src="docs/images/settings-sliders.jpg" alt="Ajustes con sliders" width="400">
 <img src="docs/images/settings-profiles.jpg" alt="Editor de perfiles" width="400">
 </p>
+
+### Teclado aéreo: cómo se usa
+
+1. **Haz clic en el campo donde quieres escribir** (con el ratón aéreo o el normal).
+2. Ábrelo con **🤙** (meñique solo, 0,8 s), con el menú del icono (*Teclado aéreo*), con la voz ("teclado") o con la tecla `k`. AirControl devuelve el foco a la app donde escribes; arriba verás *"Escribiendo en: Safari"* y lo último que has escrito.
+3. **Con la mano:** apunta (un círculo amarillo marca dónde estás) y **pellizca** para pulsar. **Con la mirada:** mantén la vista en la tecla ~1 s (una barra amarilla se llena).
+4. Los **números (1–0) están en la fila de arriba**. `123` abre símbolos (`@ # $ ( ) ¿ ¡ € …`) y `abc` vuelve. ⇧ pone en mayúscula la siguiente letra; ⌫ y las flechas se repiten si las mantienes. Arriba aparecen 3 sugerencias de palabras.
+5. **✕** o 🤙 de nuevo lo cierran.
 
 ### Voz
 

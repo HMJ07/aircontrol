@@ -34,7 +34,7 @@ class Controller:
         self.mouse = AirMouse(settings, backend.screen_size())
         self.recognizer = GestureRecognizer(store, threshold=settings.gesture_threshold)
         self.swipes = SwipeDetector(settings.swipe_distance)
-        self.holds = HoldDetector(settings.gesture_hold_s, holds={"fist": settings.pause_hold_s, "thumbs_up": 0.6})
+        self.holds = HoldDetector(settings.gesture_hold_s, holds={"fist": settings.pause_hold_s, "thumbs_up": 0.6, "pinky_up": 0.8})
         self.runner = ActionRunner(backend, on_control=self._control, log=log)
         self.paused = False
         self.input_mode = "hand"
@@ -74,7 +74,11 @@ class Controller:
         if on and self.keyboard is None:
             self.keyboard = KeyboardState(self.cfg.keyboard_dwell_s)
             self.kb_uv = None
-            self.log("⌨️  Teclado aéreo abierto")
+            target = self.app_provider() or ""                    # la app que está detrás de AirControl
+            self.keyboard.target = target
+            if target:                                            # si el foco quedó en AirControl, lo escrito se perdería
+                self.backend.focus_app(target)
+            self.log(f"⌨️  Teclado aéreo abierto (escribe en: {target or 'la app en primer plano'})")
         elif not on and self.keyboard is not None:
             self.keyboard = None
             self.log("⌨️  Teclado aéreo cerrado")
@@ -151,6 +155,7 @@ class Controller:
     def _keyboard_frame(self, lm, face, aspect, now, active, use_gaze):
         """Con el teclado abierto el puntero no mueve el cursor del sistema: elige teclas."""
         uv, pinch = None, False
+        self.keyboard.target = self._current_app(now) or self.keyboard.target
         if use_gaze:
             self.mouse.update(None, now, active=False)
             self.gaze.click_enabled = False

@@ -28,8 +28,8 @@ MAX_GAZE_RMS_SAVE = 500             # por encima, la calibración se descarta (p
 def keyboard_rect(screen):
     """Teclado acoplado abajo y centrado (sobre el Dock): (x, y, ancho, alto) en píxeles de pantalla."""
     sw, sh = screen
-    w = min(int(sw * 0.72), 1200)
-    h = int(w * 0.36)
+    w = min(int(sw * 0.8), 1400)
+    h = int(w * 0.40)
     return ((sw - w) // 2, sh - h - 70, w, h)
 
 

@@ -3,19 +3,24 @@ Lógica pura: recibe la posición (u, v) en 0..1 sobre el teclado y devuelve acc
 import re
 
 # Fila = lista de (etiqueta, tecla, ancho relativo). `tecla`: carácter, o nombre especial.
+BOTTOM = [("123", "symbols", 1.4), ("espacio", "space", 5), ("←", "left", 1), ("→", "right", 1), ("✕", "close", 1.2)]
 LETTERS = [
-    [(c, c, 1) for c in "qwertyuiop"] + [("⌫", "backspace", 1.6)],
+    [(c, c, 1) for c in "1234567890"] + [("⌫", "backspace", 1.6)],          # los números siempre a la vista
+    [(c, c, 1) for c in "qwertyuiop"] + [("?", "?", 1.6)],
     [(c, c, 1) for c in "asdfghjklñ"] + [("⏎", "enter", 1.6)],
-    [("⇧", "shift", 1.4)] + [(c, c, 1) for c in "zxcvbnm,."] + [("?", "?", 1)],
-    [("123", "symbols", 1.4), ("espacio", "space", 5), ("←", "left", 1), ("→", "right", 1), ("✕", "close", 1.2)],
+    [("⇧", "shift", 1.4)] + [(c, c, 1) for c in "zxcvbnm,."] + [("!", "!", 1)],
+    BOTTOM,
 ]
 SYMBOLS = [
-    [(c, c, 1) for c in "1234567890"] + [("⌫", "backspace", 1.6)],
-    [(c, c, 1) for c in "@#$%&*-+=/"] + [("⏎", "enter", 1.6)],
-    [(c, c, 1) for c in "()[]{}<>:;\"'"][:10] + [("!", "!", 1.6)],
-    [("abc", "letters", 1.4), ("espacio", "space", 5), ("←", "left", 1), ("→", "right", 1), ("✕", "close", 1.2)],
+    [(c, c, 1) for c in "@#$%&*-+=/"] + [("⌫", "backspace", 1.6)],
+    [(c, c, 1) for c in "()[]{}<>:;"] + [("_", "_", 1.6)],
+    [(c, c, 1) for c in "¿¡!?\"'~.,"][:10] + [("⏎", "enter", 1.6)],
+    [(c, c, 1) for c in "\\|^€°ªºç´¨"][:10] + [("·", "·", 1)],
+    [("abc", "letters", 1.4)] + BOTTOM[1:],
 ]
-SUGGEST_H = 0.16                      # fracción superior del teclado reservada a las sugerencias
+TEXT_H = 0.09                         # franja superior: lo escrito y la app de destino
+SUGGEST_H = 0.20                      # hasta aquí llegan franja de texto + sugerencias (el teclado empieza debajo)
+TYPED_MAX = 60                        # caracteres recientes que se muestran
 REPEAT_KEYS = ("backspace", "left", "right")
 REPEAT_S = 0.6
 
@@ -50,6 +55,8 @@ class KeyboardState:
         self.layer = "letters"
         self.shift = False
         self.word = ""                           # palabra en curso, para las sugerencias
+        self.typed = ""                          # lo último escrito (se muestra arriba aunque el foco esté en otra app)
+        self.target = ""                         # app donde caerá lo que escribas
         self.hover = None                        # tecla bajo el puntero
         self._since = 0.0
         self._armed = True
@@ -72,7 +79,7 @@ class KeyboardState:
                 out.append((key, label, x, SUGGEST_H + r * row_h, x1, SUGGEST_H + (r + 1) * row_h))
                 x = x1
         for i, word in enumerate(suggestions(self.word)):
-            out.append((f"suggest:{word}", word, i / 3, 0.0, (i + 1) / 3, SUGGEST_H))
+            out.append((f"suggest:{word}", word, i / 3, TEXT_H, (i + 1) / 3, SUGGEST_H))
         return out
 
     def key_at(self, u, v):
@@ -99,6 +106,7 @@ class KeyboardState:
         if key.startswith("suggest:"):
             rest = key[8:][len(self.word):]
             self.word = ""
+            self._remember(rest + " ")
             return [("type", rest + " ")]
         if key == "shift":
             self.shift = not self.shift
@@ -110,17 +118,25 @@ class KeyboardState:
             return [("close",)]
         if key == "space":
             self.word = ""
+            self._remember(" ")
             return [("type", " ")]
         if key in ("enter", "left", "right"):
             self.word = ""
+            if key == "enter":
+                self._remember("⏎")
             return [("key", key)]
         if key == "backspace":
             self.word = self.word[:-1]
+            self.typed = self.typed[:-1]
             return [("key", "backspace")]
         char = key.upper() if self.shift else key
         self.shift = False
-        self.word = self.word + char.lower() if re.match(r"\w", char) else ""
+        self.word = self.word + char.lower() if re.match(r"[^\W\d_]", char) else ""     # solo letras forman palabra
+        self._remember(char)
         return [("type", char)]
+
+    def _remember(self, text):
+        self.typed = (self.typed + text)[-TYPED_MAX:]
 
     def update(self, uv, now, pinch=False):
         """Un fotograma. `uv` = posición sobre el teclado o None. `pinch`=True pulsa al instante la tecla bajo el
