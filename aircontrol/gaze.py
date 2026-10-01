@@ -23,6 +23,12 @@ NOSE, CHIN, FOREHEAD, CHEEK_L, CHEEK_R = 1, 152, 10, 234, 454
 
 FEATURE_NAMES = ("h", "v", "yaw", "pitch", "nx", "ny")
 
+# Apertura de ojo (EAR) por debajo de la cual el ojo está CERRADO. Al mirar hacia abajo los párpados bajan y el EAR cae
+# a ~0,1 con los ojos abiertos (medido en una calibración real), así que el umbral debe ser mucho menor que eso.
+CLOSED_EAR = 0.06
+MIN_PER_POINT = 8                     # muestras mínimas para dar un punto de calibración por bueno
+MAX_RETRIES = 2                       # veces que se repite un punto sin muestras suficientes
+
 
 def _pt(face, i, aspect):
     return np.array([face[i][0] * aspect, face[i][1]], dtype=np.float64)
@@ -175,6 +181,7 @@ class GazeCalibration:
         self.screen, self.settle_s, self.collect_s = screen, settle_s, collect_s
         self.points = points or self.GRID
         self.index, self.started = 0, None
+        self.retries = {}
         self.feats, self.targets, self.groups, self.ears = [], [], [], []
         self.model = None
         self.error = None
@@ -194,6 +201,9 @@ class GazeCalibration:
             return self.index, len(self.points), "settle", t / self.settle_s
         return self.index, len(self.points), "collect", min(1.0, (t - self.settle_s) / self.collect_s)
 
+    def retrying(self):
+        return self.retries.get(self.index, 0) > 0
+
     def update(self, features, ear, now, eyes_open=True):
         """Un fotograma. `features` None si no hay cara. Devuelve True al terminar."""
         if self.done:
@@ -207,10 +217,20 @@ class GazeCalibration:
             self.groups.append(self.index)
             self.ears.append(ear)
         if t >= self.settle_s + self.collect_s:
+            got = self.groups.count(self.index)
+            if got < MIN_PER_POINT and self.retries.get(self.index, 0) < MAX_RETRIES:
+                self.retries[self.index] = self.retries.get(self.index, 0) + 1     # sin muestras: se repite el punto
+                self.started = None
+                return False
             self.index, self.started = self.index + 1, None
             if self.done:
                 self._finish()
         return self.done
+
+    @property
+    def missing(self):
+        """Puntos de calibración que se quedaron sin muestras suficientes (aun tras repetirlos)."""
+        return [i for i in range(len(self.points)) if self.groups.count(i) < MIN_PER_POINT]
 
     def _finish(self):
         try:
@@ -223,8 +243,8 @@ class BlinkDetector:
     """Parpadeo largo (cerrar los ojos entre `min_s` y `max_s`) = clic. Los parpadeos normales se ignoran.
     La apertura se compara con la mediana reciente, así sirve para ojos de cualquier forma."""
 
-    def __init__(self, min_s=0.6, max_s=2.0, closed_ratio=0.55):
-        self.min_s, self.max_s, self.closed_ratio = min_s, max_s, closed_ratio
+    def __init__(self, min_s=0.6, max_s=2.0, closed_ratio=0.55, closed_abs=CLOSED_EAR):
+        self.min_s, self.max_s, self.closed_ratio, self.closed_abs = min_s, max_s, closed_ratio, closed_abs
         self._open = deque(maxlen=90)
         self._closed_since = None
         self.closed = False
@@ -235,7 +255,8 @@ class BlinkDetector:
             self._closed_since, self.closed = None, False
             return False
         baseline = float(np.median(self._open)) if len(self._open) >= 10 else None
-        is_closed = baseline is not None and ear < baseline * self.closed_ratio
+        # Cerrado = mucho menos que lo habitual Y casi sin apertura. Solo lo primero confundía "mirar abajo" con cerrar.
+        is_closed = baseline is not None and ear < baseline * self.closed_ratio and ear < self.closed_abs
         fired = False
         if is_closed:
             self._closed_since = self._closed_since if self._closed_since is not None else now

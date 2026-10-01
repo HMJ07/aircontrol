@@ -10,7 +10,7 @@ from . import config, ipc, system
 from .actions import ActionError, parse_action
 from .controller import Controller
 from .fsutil import write_text_atomic
-from .gaze import GazeModel, GazeCalibration, extract_features
+from .gaze import CLOSED_EAR, GazeModel, GazeCalibration, extract_features
 from .gestures import GestureStore
 from .handcal import CORNERS, HandCalibration
 from .profiles import Profiles
@@ -206,6 +206,10 @@ class Engine:
                                     groups=np.array(obj.groups), ears=np.array(obj.ears), screen=np.array(self.screen))
             except OSError:
                 pass
+            missing = obj.missing
+            if missing:
+                self.log(f"⚠️  Puntos sin muestras suficientes: {[m + 1 for m in missing]} (¿se cierran los ojos al mirar abajo? "
+                         "sube un poco la pantalla o aléjate)")
             if rms is not None and rms > MAX_GAZE_RMS_SAVE:
                 cal["message"] = (f"Calibración descartada: error medio ≈ {rms:.0f} px (se guardaría algo peor que nada). "
                                   "Repite con buena luz, la cara de frente a la cámara y mirando fijo cada punto sin mover la cabeza.")
@@ -213,6 +217,8 @@ class Engine:
                 write_text_atomic(config.GAZE_PATH, obj.model.to_json())
                 self.ctl.set_gaze_model(obj.model)
                 cal["message"] = (f"Mirada calibrada · error medio ≈ {rms:.0f} px" if rms is not None else "Mirada calibrada")
+                if missing:
+                    cal["message"] += f" · sin datos en los puntos {[m + 1 for m in missing]}: la parte de pantalla cercana será imprecisa"
                 if rms is not None and rms > MAX_GAZE_RMS_OK:
                     cal["message"] += " (poco fiable: repite con buena luz y la cabeza centrada)"
         cal["done_at"] = now
@@ -232,10 +238,12 @@ class Engine:
                 progress, phase, ok = obj.progress(now), "collect", hand is not None
             else:
                 feats, ear = extract_features(face, aspect) if face is not None else (None, None)
-                done = obj.update(feats, ear, now, eyes_open=ear is not None and ear > 0.10)
+                done = obj.update(feats, ear, now, eyes_open=ear is not None and ear > CLOSED_EAR)
                 idx, total, phase, progress = obj.progress(now)
                 target = obj.target_px()
-                title, sub = "Mira fijamente el punto", f"Punto {min(idx + 1, total)} de {total} · cabeza quieta y de frente"
+                title = "Mira fijamente el punto"
+                sub = f"Punto {min(idx + 1, total)} de {total} · cabeza quieta y de frente" + \
+                      (" · repitiendo: no te vi bien los ojos, mira el punto con los ojos abiertos" if obj.retrying() else "")
                 ok = face is not None
             if done:
                 self._finish_calibration(cal, now)

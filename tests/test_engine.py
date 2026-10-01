@@ -225,6 +225,9 @@ class CalibrationFlowTests(unittest.TestCase):
             t = self.drive(eng, 30)
             self.assertIsNotNone(eng.ctl.gaze)
             self.assertTrue((d / "gaze_samples.npz").exists())          # datos crudos guardados para diagnosticar
+            saved = np.load(d / "gaze_samples.npz")
+            self.assertEqual(sorted(set(saved["groups"].tolist())), list(range(9)))     # los 9 puntos, también los de abajo
+            self.assertLess(float(saved["ears"].min()), 0.10)           # y con ojos entrecerrados al mirar abajo
             self.assertTrue((d / "gaze.json").exists())
             self.assertIn("error medio", eng.cal["message"] if eng.cal else "error medio")
             self.drive(eng, 6, t0=t)

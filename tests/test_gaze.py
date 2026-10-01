@@ -30,7 +30,8 @@ def face(h=0.0, v=0.0, yaw=0.0, pitch=0.0, pos=(0.5, 0.5), eye_open=0.30):
 def looking_at(sx, sy, rng=None, noise=0.0):
     """Cara de alguien que mira al punto (sx, sy) 0..1: iris y cabeza siguen la mirada con ruido."""
     n = (lambda: rng.normal(0, noise)) if rng is not None else (lambda: 0.0)
-    return face(h=(sx - 0.5) * 0.5 + n(), v=(sy - 0.5) * 0.3 + n(), yaw=(sx - 0.5) * 0.08 + n() * 0.2,
+    return face(eye_open=(0.47 - 0.42 * sy) * 4 / 3,        # EAR real: ~0,44 arriba y ~0,08 abajo, con los ojos abiertos
+                h=(sx - 0.5) * 0.5 + n(), v=(sy - 0.5) * 0.3 + n(), yaw=(sx - 0.5) * 0.08 + n() * 0.2,
                 pitch=(sy - 0.5) * 0.06 + n() * 0.2, pos=(0.5 + (sx - 0.5) * 0.04 + n() * 0.3, 0.5 + (sy - 0.5) * 0.03 + n() * 0.3))
 
 
@@ -171,6 +172,87 @@ class RobustFitTests(unittest.TestCase):
         old = json.loads(model.to_json())
         old.pop("quad"); old.pop("rms_all")                                 # fichero de una versión anterior
         self.assertTrue(GazeModel.from_json(json.dumps(old)).quad)
+
+
+class LookingDownTests(unittest.TestCase):
+    """Regresión: una calibración real no tenía los dos puntos de abajo: el EAR al mirar abajo cae a ~0,1 con los ojos
+    abiertos y se descartaba como 'ojo cerrado'; además mirar abajo congelaba el cursor."""
+
+    def test_eyes_looking_down_are_open_not_closed(self):
+        from aircontrol.gaze import CLOSED_EAR
+        _, ear_top = extract_features(looking_at(0.5, 0.08))
+        _, ear_bottom = extract_features(looking_at(0.5, 0.92))
+        self.assertLess(ear_bottom, 0.10)                       # el caso que el umbral antiguo (0,10) descartaba
+        self.assertGreater(ear_bottom, CLOSED_EAR)
+        self.assertGreater(ear_top, 0.35)
+
+    def test_blink_detector_ignores_slowly_looking_down_but_catches_a_real_long_blink(self):
+        b, fired, t = BlinkDetector(), [], 0.0
+        for _ in range(30):
+            fired.append(b.update(0.30, t)); t += 1 / 30
+        for i in range(60):                                      # el ojo baja de 0,30 a 0,08 y se queda así 1,3 s
+            fired.append(b.update(max(0.30 - i * 0.02, 0.08), t)); t += 1 / 30
+            self.assertFalse(b.closed, i)
+        for _ in range(10):
+            fired.append(b.update(0.30, t)); t += 1 / 30
+        self.assertEqual(sum(fired), 0)
+        for _ in range(21):                                      # cerrar de verdad (EAR 0,03) 0,7 s
+            fired.append(b.update(0.03, t)); t += 1 / 30
+        fired.append(b.update(0.30, t))
+        self.assertEqual(sum(fired), 1)
+
+    def test_cursor_keeps_following_gaze_at_the_bottom_of_the_screen(self):
+        model = run_calibration().model
+        gp, events = GazePointer(model, Settings(gaze_click="off")), []
+        for i in range(90):
+            events += gp.update(looking_at(0.5, 0.9), i / 30)
+        self.assertGreater(gp.cursor[1], 0.75 * SCREEN[1])      # llegó abajo y no se quedó congelado a mitad
+        self.assertFalse(gp.blink.closed)
+
+    def test_no_false_blink_click_when_looking_down(self):
+        model = run_calibration().model
+        gp, events = GazePointer(model, Settings(gaze_click="blink")), []
+        for i in range(30):
+            events += gp.update(looking_at(0.5, 0.2), i / 30)
+        for i in range(120):                                     # baja la vista y la mantiene
+            events += gp.update(looking_at(0.5, 0.2 + 0.7 * min(i / 30, 1)), (30 + i) / 30)
+        self.assertEqual([e for e in events if e[0] == "click"], [])
+
+
+class CalibrationRetryTests(unittest.TestCase):
+    def drive(self, cal, face_for_point, seconds=80):
+        t = 0.0
+        while not cal.done and t < seconds:
+            sx, sy = cal.target_px()
+            f = face_for_point(cal.index, t, sx / SCREEN[0], sy / SCREEN[1])
+            feats, ear = extract_features(f) if f is not None else (None, None)
+            cal.update(feats, ear, t)
+            t += 1 / 30
+        return t
+
+    def test_a_point_without_samples_is_repeated_and_then_collected(self):
+        cal = GazeCalibration(SCREEN)
+        first_attempt_end = cal.settle_s + cal.collect_s
+        # el punto 3 no ve la cara durante el primer intento: se repite y en el segundo ya hay datos
+        self.drive(cal, lambda i, t, sx, sy: None if (i == 3 and cal.retries.get(3, 0) == 0) else looking_at(sx, sy))
+        self.assertTrue(cal.done)
+        self.assertEqual(cal.retries.get(3), 1)
+        self.assertEqual(cal.missing, [])
+        self.assertEqual(sorted(set(cal.groups)), list(range(9)))
+
+    def test_a_point_that_never_gets_samples_is_reported_missing_and_the_rest_still_calibrates(self):
+        cal = GazeCalibration(SCREEN)
+        self.drive(cal, lambda i, t, sx, sy: None if i == 6 else looking_at(sx, sy))
+        self.assertTrue(cal.done)
+        self.assertEqual(cal.retries[6], 2)                       # reintentó el máximo de veces
+        self.assertEqual(cal.missing, [6])
+        self.assertIsNotNone(cal.model)
+
+    def test_points_with_enough_samples_are_not_repeated(self):
+        cal = GazeCalibration(SCREEN)
+        self.drive(cal, lambda i, t, sx, sy: looking_at(sx, sy))
+        self.assertEqual(cal.retries, {})
+        self.assertEqual(cal.missing, [])
 
 
 class DwellTests(unittest.TestCase):
