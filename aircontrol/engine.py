@@ -64,6 +64,8 @@ class Engine:
         self.profiles = Profiles.load(config.PROFILES_PATH)
         for err in self.profiles.errors:
             self.log(f"⚠️  {err}")
+        if self.profiles.migrated:
+            self.log("ℹ️  Perfiles de ejemplo actualizados (los anteriores cerraban pestañas con un gesto accidental).")
         try:
             if self.camera is None:
                 from .camera import Camera

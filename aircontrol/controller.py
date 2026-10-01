@@ -92,7 +92,10 @@ class Controller:
         """Procesa un fotograma (`lm` = landmarks de la mano, `face` = de la cara; None si no hay) y devuelve
         el Status para el overlay."""
         custom = self.recognizer.classify(lm)[0] if lm is not None and not self.paused else None
-        pose = custom or (builtin_pose(lm) if lm is not None else None)
+        # Pellizcando o arrastrando, la mano (índice curvado, resto plegado) parece un puño o un pulgar: sin esto un
+        # arrastre largo pausaba el control (puño 1,2 s) y escribir con pellizco disparaba gestos.
+        pinching = self.mouse.mode in ("pinch", "drag")
+        pose = custom or (builtin_pose(lm) if lm is not None and not pinching else None)
         fired = self.holds.update(pose, now)
         if self.paused:
             pose = pose if pose == "fist" else None
@@ -112,6 +115,8 @@ class Controller:
             return self._status(now, pose)
 
         gesture = fired or self.swipes.update(lm, now)
+        if gesture and self.keyboard is not None:
+            gesture = None        # con el teclado abierto los gestos no disparan nada: se cierra con ✕, la voz o el menú
         if gesture:
             action = self.profiles.resolve(gesture, self._current_app(now))
             if action:

@@ -77,12 +77,15 @@ class ProfilesTests(unittest.TestCase):
         self.assertEqual(self.profiles.errors, [])
 
     def test_same_gesture_differs_by_app(self):
-        browser = self.profiles.resolve("thumbs_up", "Google Chrome")
+        slides = self.profiles.resolve("thumbs_up", "Keynote")
         video = self.profiles.resolve("thumbs_up", "VLC")
         other = self.profiles.resolve("thumbs_up", "Terminal")
-        self.assertEqual(browser.kind, "key")
+        browser_up = self.profiles.resolve("swipe_up", "Google Chrome")
+        self.assertEqual(slides.arg, ["f5"])
         self.assertEqual(video.arg, ["space"])
         self.assertEqual(other, parse_action("media:play_pause"))
+        self.assertEqual(browser_up.kind, "scroll")                           # en el navegador sube la página
+        self.assertEqual(self.profiles.resolve("swipe_up", "Terminal"), parse_action("media:volume_up"))
 
     def test_falls_back_to_default_when_profile_lacks_gesture(self):
         self.assertEqual(self.profiles.resolve("swipe_up", "VLC"), parse_action("media:volume_up"))
@@ -92,6 +95,31 @@ class ProfilesTests(unittest.TestCase):
         self.assertEqual(self.profiles.profile_name("Safari"), "Navegador")
         self.assertEqual(self.profiles.profile_name("Terminal"), "default")
         self.assertEqual(self.profiles.profile_name(None), "default")
+
+    def test_default_examples_contain_no_destructive_actions(self):
+        """Un gesto accidental no debe costar nada: nada de cerrar pestañas/ventanas, salir, borrar o ir a la barra de URL."""
+        import json
+        dangerous = ("mod+w", "mod+q", "esc", "delete", "backspace", "mod+l", "alt+f4", "mod+shift+w")
+        text = json.dumps(DEFAULT_PROFILES).lower()
+        for d in dangerous:
+            self.assertNotIn(d, text, d)
+
+    def test_untouched_legacy_profiles_file_is_migrated_and_edited_one_is_not(self):
+        import json, tempfile
+        from pathlib import Path
+        from aircontrol.profiles import LEGACY_DEFAULTS
+        d = Path(tempfile.mkdtemp())
+        untouched = d / "a.json"
+        untouched.write_text(json.dumps(LEGACY_DEFAULTS[0]))
+        self.assertTrue(Profiles.load(untouched).migrated)
+        self.assertEqual(json.loads(untouched.read_text()), DEFAULT_PROFILES)
+        self.assertFalse(Profiles.load(untouched).migrated)                     # ya está al día
+        edited = json.loads(json.dumps(LEGACY_DEFAULTS[0]))
+        edited["profiles"][0]["bindings"]["swipe_up"] = "key:mod+t"          # el usuario cambió algo a propósito
+        mine = d / "b.json"
+        mine.write_text(json.dumps(edited))
+        self.assertFalse(Profiles.load(mine).migrated)
+        self.assertEqual(json.loads(mine.read_text()), edited)                  # no se pisa nada del usuario
 
     def test_pinky_up_opens_keyboard_even_with_an_old_profile_file(self):
         old = {"default": {"thumbs_up": "click"}, "profiles": []}              # perfil de una versión anterior

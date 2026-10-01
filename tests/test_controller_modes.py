@@ -128,7 +128,7 @@ class KeyboardModeTests(unittest.TestCase):
         bed.ctl.set_keyboard(True)
         self.assertFalse([c for c in bed.backend.calls if c[0] == "focus"])
 
-    def test_pinky_up_opens_and_closes_the_keyboard_after_hold(self):
+    def test_pinky_up_opens_the_keyboard_after_hold_but_does_not_close_it(self):
         from tests.handfactory import hand
         bed = Bed()
         bed.feed(hand(pinky=1), None, 15)                              # 0,5 s: aún no
@@ -136,8 +136,38 @@ class KeyboardModeTests(unittest.TestCase):
         bed.feed(hand(pinky=1), None, 20)                              # >0,8 s
         self.assertTrue(bed.status.keyboard)
         bed.feed(None, None, 60)                                       # soltar y esperar al respiro
-        bed.feed(hand(pinky=1), None, 30)
-        self.assertFalse(bed.status.keyboard)                          # el mismo gesto lo cierra
+        bed.feed(hand(pinky=1), None, 40)
+        self.assertTrue(bed.status.keyboard)                           # un 🤙 accidental al teclear NO lo cierra
+        bed.ctl._control("keyboard")                                   # menú / voz / tecla k / ✕ sí
+        self.assertFalse(bed.feed(None, None, 1).keyboard)
+
+    def test_gestures_do_nothing_while_the_keyboard_is_open(self):
+        from tests.handfactory import hand, open_palm
+        bed = Bed()
+        bed.ctl.set_keyboard(True)
+        before = len(bed.backend.calls)
+        bed.feed(hand(thumb_up=True), None, 40)                        # 👍 mantenido (en Safari iba a la barra de URL)
+        for i in range(8):                                             # deslizar la palma (en Safari: atrás/adelante)
+            bed.status = bed.ctl.process(open_palm(at=(0.06 * i, 0)), bed.t)
+            bed.t += DT
+        self.assertEqual([c for c in bed.backend.calls[before:] if c[0] in ("key", "media", "scroll")], [])
+        self.assertTrue(bed.status.keyboard)
+
+    def test_fist_still_pauses_with_the_keyboard_open(self):
+        from tests.handfactory import fist
+        bed = Bed()
+        bed.ctl.set_keyboard(True)
+        self.assertTrue(bed.feed(fist(), None, 50).paused)
+
+    def test_holding_a_pinch_or_drag_never_counts_as_the_pause_fist(self):
+        """Regresión: un arrastre largo (índice curvado + resto plegado) parecía un puño y pausaba/reanudaba el control."""
+        from tests.handfactory import hand, point
+        bed = Bed()
+        bed.feed(point(), None, 10)
+        curled_pinch = hand(index=0, pinch="index")                    # índice curvado tocando el pulgar, resto plegado
+        status = bed.feed(curled_pinch, None, 90)                      # 3 s: mucho más que el puño (1,2 s)
+        self.assertFalse(status.paused)
+        self.assertIn(status.mode, ("drag", "pinch"))
 
     def test_pinky_up_does_not_move_the_cursor_or_click(self):
         from tests.handfactory import hand

@@ -5,10 +5,11 @@ from .actions import ActionError, parse_action
 from .fsutil import write_text_atomic
 
 DEFAULT_PROFILES = {
-    "version": 1,
+    "version": 2,
     "comment": "Cada perfil se activa si el nombre de la app en primer plano contiene alguna de sus palabras "
                "'match'. Las acciones de 'default' valen en cualquier app que no las redefina. "
-               "Gestos: swipe_left/right/up/down, thumbs_up y los que entrenes con `aircontrol train`.",
+               "Gestos: swipe_left/right/up/down, thumbs_up, pinky_up y los que entrenes con `aircontrol train`. "
+               "Los ejemplos evitan acciones destructivas (cerrar pestañas, salir): un gesto accidental no debe costar nada.",
     "default": {
         "thumbs_up": "media:play_pause",
         "swipe_up": "media:volume_up",
@@ -20,19 +21,21 @@ DEFAULT_PROFILES = {
          "bindings": {
              "swipe_left": {"darwin": "key:mod+[", "default": "key:alt+left"},
              "swipe_right": {"darwin": "key:mod+]", "default": "key:alt+right"},
-             "swipe_up": "key:mod+r",
-             "swipe_down": "key:mod+w",
-             "thumbs_up": "key:mod+l"}},
+             "swipe_up": "scroll:up:15",
+             "swipe_down": "scroll:down:15"}},
         {"name": "Presentaciones",
          "match": ["powerpoint", "keynote", "impress", "slides"],
-         "bindings": {"swipe_left": "key:left", "swipe_right": "key:right",
-                      "swipe_up": "key:home", "swipe_down": "key:esc", "thumbs_up": "key:f5"}},
+         "bindings": {"swipe_left": "key:left", "swipe_right": "key:right", "swipe_up": "key:home",
+                      "thumbs_up": "key:f5"}},
         {"name": "Vídeo",
          "match": ["vlc", "quicktime", "mpv", "iina", "netflix", "spotify", "music", "movies"],
          "bindings": {"thumbs_up": "key:space", "swipe_left": "key:left", "swipe_right": "key:right"}},
     ],
 }
 
+# Ejemplos de versiones anteriores. Si profiles.json es idéntico a uno, nunca se tocó: se actualiza solo. Los ejemplos
+# v1 tenían swipe_down = cerrar pestaña y thumbs_up = ir a la barra de direcciones, que se disparaban sin querer.
+LEGACY_DEFAULTS = [json.loads(r'''{"version": 1, "comment": "Cada perfil se activa si el nombre de la app en primer plano contiene alguna de sus palabras 'match'. Las acciones de 'default' valen en cualquier app que no las redefina. Gestos: swipe_left/right/up/down, thumbs_up y los que entrenes con `aircontrol train`.", "default": {"thumbs_up": "media:play_pause", "swipe_up": "media:volume_up", "swipe_down": "media:volume_down"}, "profiles": [{"name": "Navegador", "match": ["safari", "chrome", "firefox", "edge", "brave", "arc", "opera"], "bindings": {"swipe_left": {"darwin": "key:mod+[", "default": "key:alt+left"}, "swipe_right": {"darwin": "key:mod+]", "default": "key:alt+right"}, "swipe_up": "key:mod+r", "swipe_down": "key:mod+w", "thumbs_up": "key:mod+l"}}, {"name": "Presentaciones", "match": ["powerpoint", "keynote", "impress", "slides"], "bindings": {"swipe_left": "key:left", "swipe_right": "key:right", "swipe_up": "key:home", "swipe_down": "key:esc", "thumbs_up": "key:f5"}}, {"name": "Vídeo", "match": ["vlc", "quicktime", "mpv", "iina", "netflix", "spotify", "music", "movies"], "bindings": {"thumbs_up": "key:space", "swipe_left": "key:left", "swipe_right": "key:right"}}]}''')]
 
 # Acciones que existen aunque el perfil del usuario (creado con una versión anterior) no las mencione. Un perfil las puede
 # redefinir; no las borra. 🤙 abre y cierra el teclado aéreo: así siempre hay una forma de llegar a él con solo la mano.
@@ -43,6 +46,7 @@ class Profiles:
     def __init__(self, data=None):
         self.data = data or DEFAULT_PROFILES
         self.errors = []
+        self.migrated = False
         self._default = self._compile(self.data.get("default", {}), "default")
         self._profiles = []
         for p in self.data.get("profiles", []):
@@ -62,7 +66,13 @@ class Profiles:
     def load(cls, path):
         """Lee profiles.json; si no existe lo crea con los perfiles de ejemplo."""
         try:
-            return cls(json.loads(path.read_text(encoding="utf-8")))
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data in LEGACY_DEFAULTS:                              # nunca se editó: pasa a los ejemplos nuevos
+                write_text_atomic(path, json.dumps(DEFAULT_PROFILES, indent=2, ensure_ascii=False))
+                profiles = cls()
+                profiles.migrated = True
+                return profiles
+            return cls(data)
         except FileNotFoundError:
             write_text_atomic(path, json.dumps(DEFAULT_PROFILES, indent=2, ensure_ascii=False))
             return cls()
