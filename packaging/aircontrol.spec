@@ -17,7 +17,7 @@ datas = [(str(ROOT / "models" / "hand_landmarker.task"), "models"),
          (str(ROOT / "models" / "face_landmarker.task"), "models"),
          (str(ROOT / "aircontrol" / "web"), "aircontrol/web")]
 binaries, hiddenimports = [], []
-packages = ["mediapipe"] + (["faster_whisper", "ctranslate2", "onnxruntime", "sounddevice", "_sounddevice_data",
+packages = ["mediapipe", "cryptography", "segno"] + (["faster_whisper", "ctranslate2", "onnxruntime", "sounddevice", "_sounddevice_data",
                             "tokenizers", "huggingface_hub", "ollama"] if WITH_VOICE else [])
 for pkg in packages:
     d, b, h = collect_all(pkg)

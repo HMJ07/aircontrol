@@ -62,6 +62,18 @@
       </div>
       <p class="muted" id="live"></p>
     </div>
+    <div class="card"><h2>Móvil como cámara (Android o iPhone)</h2>
+      <p class="muted">Usa la cámara de tu móvil para controlar este ordenador, sin instalar nada: escanea el QR con el móvil
+      (misma Wi-Fi). La mano y la cara se detectan en el móvil y solo se envían los puntos, nunca vídeo.
+      Cualquiera con ese QR podría controlar el ordenador: no lo compartas, y desactívalo al terminar.</p>
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+        <div id="qr" style="width:190px;min-height:190px;background:#fff;border-radius:10px;padding:6px;display:none"></div>
+        <div style="flex:1;min-width:200px">
+          <button class="b primary" id="bRemote">Activar móvil como cámara</button>
+          <p class="muted" id="remoteMsg"></p>
+        </div>
+      </div>
+    </div>
     <div class="card"><h2>Calibración guiada</h2>
       <p class="muted">Calibra la mano (lleva el dedo a las cuatro esquinas) para que el cursor llegue a todos los bordes con
       comodidad. La mirada necesita 9 puntos y se calibra una vez por postura y pantalla.</p>
@@ -240,6 +252,21 @@ $("#saveProfiles").onclick = async () => { const r = await api("/api/profiles", 
   m.className = r.ok ? "okmsg" : "err"; m.innerHTML = ""; (r.ok ? ["Guardado. Se aplica al instante."] : r.data.errors || ["Error"]).forEach(t => m.append(el("div", {textContent:t}))); };
 $("#resetProfiles").onclick = async () => { if (confirm("¿Volver a los perfiles de ejemplo?")) { const r = await api("/api/profiles/reset", "POST", {});
   profiles = r.data.profiles; renderProfiles(); } };
+
+
+// ---- móvil como cámara
+async function refreshRemote() {
+  const r = await api("/api/remote"); if (!r.ok) return;
+  const d = r.data, qr = $("#qr");
+  $("#bRemote").textContent = d.enabled ? "Desactivar móvil como cámara" : "Activar móvil como cámara";
+  $("#bRemote").className = "b " + (d.enabled ? "" : "primary");
+  if (d.enabled && d.svg) { qr.innerHTML = d.svg; qr.style.display = "block"; } else { qr.style.display = "none"; qr.innerHTML = ""; }
+  $("#remoteMsg").textContent = !d.enabled ? "" : (d.connected ? "✅ Móvil conectado" : (d.url ? "Esperando al móvil… escanea el QR. El móvil avisará de que el certificado no es de confianza (es el de tu propio ordenador): acéptalo." : "Arrancando…"));
+}
+$("#bRemote").onclick = async () => { const on = $("#bRemote").textContent.startsWith("Activar");
+  $("#remoteMsg").textContent = "Reiniciando el control…"; const r = await api("/api/remote", "POST", {enable: on});
+  if (!r.ok) $("#remoteMsg").textContent = r.data.error || "No se pudo"; setTimeout(refreshRemote, 2500); };
+setInterval(refreshRemote, 2000); refreshRemote();
 
 refresh(); setInterval(refresh, 1500);
 </script>

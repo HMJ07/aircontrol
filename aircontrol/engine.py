@@ -36,11 +36,13 @@ def keyboard_rect(screen):
 
 class Engine:
     def __init__(self, dry_run=False, preview=True, camera_index=None, calibrate=None, exit_after_calibration=False,
-                 camera=None, hands=None, faces=None, window=None, backend=None, voice=None, log=print):
+                 camera=None, hands=None, faces=None, window=None, backend=None, voice=None, log=print, remote=None):
         self.dry_run, self.want_preview, self.camera_index = dry_run, preview, camera_index
         self.log = log
         self._calibrate_on_start, self.exit_after_calibration = calibrate, exit_after_calibration
         self.camera, self.hands, self.faces, self.window = camera, hands, faces, window
+        self.remote = remote                       # True: servidor HTTPS para el móvil; o un RemoteHub ya creado (pruebas)
+        self.hub, self._remote_server = None, None
         self.backend, self.voice = backend, voice
         self.cal = None
         self.debug = False
@@ -63,6 +65,8 @@ class Engine:
             show_error(config.APP_NAME, system.ACCESSIBILITY_HELP)
             return False
         self.backend = self.backend or create_backend(self.dry_run)
+        if self.remote and not self._setup_remote():
+            return False
         self.store = GestureStore(config.GESTURES_PATH)
         self.profiles = Profiles.load(config.PROFILES_PATH)
         for err in self.profiles.errors:
@@ -94,6 +98,32 @@ class Engine:
         self._sync_voice()
         if self._calibrate_on_start:
             self.start_calibration(self._calibrate_on_start)
+        return True
+
+    def _setup_remote(self):
+        """El móvil hace de cámara: sus landmarks llegan por HTTPS y sustituyen a la webcam, la mano y la cara."""
+        from pathlib import Path
+        from . import __version__, remote as rm
+        self.hub = self.remote if isinstance(self.remote, rm.RemoteHub) else rm.RemoteHub()
+        if self.remote is True:
+            try:
+                self._remote_server = rm.RemoteServer(
+                    self.hub, config.DATA_DIR, Path(__file__).resolve().parent / "web" / "remote", config.MODEL_PATH.parent,
+                    port=self.settings.remote_port,
+                    info={"name": __import__("socket").gethostname(), "screen": list(system.screen_size()), "version": __version__})
+            except Exception as e:
+                show_error(config.APP_NAME, f"No se pudo abrir el servidor para el móvil: {e}")
+                return False
+            self.log("📱 Móvil como cámara. Abre esta dirección en el móvil (misma Wi-Fi) o escanea el QR:")
+            self.log(self._remote_server.url)
+            try:
+                self.log(rm.qr_terminal(self._remote_server.url))
+            except Exception:
+                pass
+            self.log("   (el móvil avisará de que el certificado no es de confianza: es el de tu propio ordenador; acéptalo)")
+        self.camera = self.camera or rm.RemoteCamera(self.hub)
+        self.hands = self.hands or rm.RemoteHands(self.camera)
+        self.faces = self.faces or rm.RemoteFaces(self.camera)
         return True
 
     @staticmethod
@@ -283,10 +313,22 @@ class Engine:
         face = self.faces.detect(frame, ts) if need_face else None
         aspect = frame.shape[1] / frame.shape[0]
         if self.cal is not None:
+            self._tell_phone()
             return self._calibration_frame(frame, hand, face, aspect, now), hand
         status = self.ctl.process(hand, now, face, aspect)
+        self._tell_phone()
         self._drain_voice()
         return self._render(frame, hand, status, now), hand
+
+    def _tell_phone(self):
+        """Lo que la página del móvil necesita saber: si hay que enviar la cara (mirada), si está en pausa, etc."""
+        if self.hub is None:
+            return
+        st = self.ctl.status
+        self.hub.status = {"paused": self.ctl.paused, "input_mode": self.ctl.input_mode, "keyboard": self.ctl.keyboard is not None,
+                           "mode": st.mode, "last_action": st.last_action, "calibrating": self.cal["kind"] if self.cal else None,
+                           "need_face": (self.ctl.input_mode == "gaze" and self.ctl.gaze is not None)
+                                        or bool(self.cal and self.cal["kind"] == "gaze")}
 
     def _render(self, frame, hand, status, now):
         if self.ctl.keyboard is not None:
@@ -315,6 +357,8 @@ class Engine:
             "voice_mode": self.settings.voice_mode, "voice_state": self.voice.state if self.voice else "idle",
             "app": status.app, "profile": status.profile, "gaze_ready": self.ctl.gaze is not None,
             "calibrating": self.cal["kind"] if self.cal else None, "dry_run": self.dry_run,
+            "remote": ({"url": self._remote_server.url if self._remote_server else None, "connected": self.hub.connected()}
+                       if self.hub is not None else None),
             "fps": round(self._fps, 1)})
 
     def run(self, max_frames=None):
@@ -341,6 +385,9 @@ class Engine:
                 self._last_frame = now
                 if dt > 0:
                     self._fps = 0.9 * self._fps + 0.1 / dt if self._fps else 1 / dt
+                if self.hub is not None:
+                    for cmd in self.hub.pop_commands():             # botones de la página del móvil
+                        self.command(cmd)
                 if now - self._last_reload >= RELOAD_EVERY:
                     self._last_reload = now
                     changed = self.watcher.changed()
@@ -361,6 +408,13 @@ class Engine:
 
     def _check_camera(self, ok, frame):
         """Avisa (log + franja en la vista previa) si la cámara no da imagen útil; se limpia sola al recuperarse."""
+        if self.hub is not None:                                    # con el móvil no hay "cámara negra": hay "móvil sin conectar"
+            from .remote import WAITING
+            issue = None if self.hub.connected() else WAITING
+            if issue != self._camera_issue:
+                self._camera_issue = issue
+                self.log("📱 Esperando al móvil..." if issue else "📱 Móvil conectado.")
+            return
         if self._camera_health is None:
             self._camera_health = CameraHealth()
         issue = self._camera_health.update(ok, frame, time.monotonic())
@@ -400,6 +454,8 @@ class Engine:
             pass
         if self.voice:
             self.voice.stop()
+        if self._remote_server:
+            self._remote_server.stop()
         if self.camera:
             self.camera.release()
         if self.window:

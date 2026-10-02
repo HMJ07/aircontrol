@@ -57,6 +57,7 @@ class EngineProcess:
     def __init__(self, argv_prefix=None):
         self.prefix = argv_prefix or ([sys.executable] if IS_FROZEN else [sys.executable, str(ROOT_DIR / "main.py")])
         self.proc = None
+        self.args = ()                                  # con qué argumentos arrancó (p. ej. --remote)
 
     def running(self):
         return self.proc is not None and self.proc.poll() is None
@@ -66,7 +67,12 @@ class EngineProcess:
             return False
         kwargs = {"creationflags": 0x08000000} if sys.platform == "win32" else {}     # CREATE_NO_WINDOW
         self.proc = subprocess.Popen([*self.prefix, "run", *args], **kwargs)
+        self.args = tuple(args)
         return True
+
+    def restart(self, *args):
+        self.stop()
+        return self.start(*args)
 
     def stop(self, timeout=4.0):
         if not self.running():
@@ -138,6 +144,17 @@ class AppContext:
         if name in RESERVED or not NAME_RE.match(name):
             raise ValueError("Nombre no válido (2-24 letras minúsculas, números o _) o reservado")
         self.run_exclusive(f"entrenando '{name}'", "train", name, "--samples", str(samples), "--replace")
+
+    def remote_info(self):
+        """Estado del móvil como cámara según el motor: None si no está activado."""
+        state = self.state()
+        return (state or {}).get("remote")
+
+    def set_remote(self, enable):
+        """Activa/desactiva el móvil como cámara: el motor se reinicia con o sin `--remote` (el servidor vive en él)."""
+        if self.busy:
+            raise RuntimeError(f"Ocupado: {self.busy}")
+        self.engine.restart(*(("--remote",) if enable else ()))
 
     def calibrate(self, what):
         if what not in ("hand", "gaze"):
@@ -281,6 +298,22 @@ def create_web_app(ctx):
             return jsonify(ok=False, error="acción desconocida"), 400
         return jsonify(ok=True)
 
+    @app.get("/api/remote")
+    def remote_state():
+        from . import remote as rm
+        info = ctx.remote_info()
+        enabled = "--remote" in getattr(ctx.engine, "args", ())
+        out = {"enabled": enabled, "running": ctx.engine.running(), "connected": bool((info or {}).get("connected"))}
+        if info and info.get("url"):
+            out["url"] = info["url"]
+            out["svg"] = rm.qr_svg(info["url"], scale=5)
+        return jsonify(out)
+
+    @app.post("/api/remote")
+    def remote_toggle():
+        enable = bool((request.get_json(force=True) or {}).get("enable"))
+        return guarded(lambda: ctx.set_remote(enable))
+
     @app.get("/api/ollama")
     def ollama_models():
         try:
@@ -382,6 +415,8 @@ def run_app(start_engine=True, open_settings=False):
         item("Teclado aéreo", safe(lambda: ctx.send("keyboard")), checked=lambda _i: bool(st("keyboard")),
              enabled=lambda _i: ctx.engine.running()),
         item("Escuchar una orden de voz", safe(lambda: ctx.send("voice")), enabled=lambda _i: ctx.engine.running()),
+        item("Usar el móvil como cámara", safe(lambda: (ctx.set_remote("--remote" not in ctx.engine.args), webbrowser.open(ctx.url))),
+             checked=lambda _i: "--remote" in ctx.engine.args),
         pystray.MenuItem("Calibrar", pystray.Menu(
             item("La mano (esquinas)", safe(lambda: ctx.calibrate("hand"))),
             item("La mirada (9 puntos)", safe(lambda: ctx.calibrate("gaze"))))),
