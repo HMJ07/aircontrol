@@ -6,6 +6,7 @@ import numpy as np
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+from . import geometry
 from .config import MODEL_PATH, MODEL_URL
 
 
@@ -34,6 +35,7 @@ class HandTracker:
         self._last_ts = ts
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         result = self.detector.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), ts)
+        geometry.set_aspect(frame_bgr.shape[1], frame_bgr.shape[0])          # umbrales iguales en 4:3 y 16:9
         if not result.hand_landmarks:
             return None
         return np.array([(p.x, p.y, p.z) for p in result.hand_landmarks[0]], dtype=np.float32)

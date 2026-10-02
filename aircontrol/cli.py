@@ -38,7 +38,7 @@ def cmd_record(args):
 
     settings = Settings.load()
     camera, tracker = Camera(settings), HandTracker()
-    times, hands, start = [], [], time.monotonic()
+    times, hands, start, aspect = [], [], time.monotonic(), None
     print(f"Grabando {args.seconds:g} s: haz los gestos que te dan problemas (Esc para parar).")
     try:
         while time.monotonic() - start < args.seconds:
@@ -46,6 +46,7 @@ def cmd_record(args):
             if not ok:
                 continue
             now = time.monotonic() - start
+            aspect = aspect or frame.shape[1] / frame.shape[0]
             lm = tracker.detect(frame, now * 1000)
             times.append(now)
             hands.append(lm)
@@ -56,7 +57,7 @@ def cmd_record(args):
     finally:
         camera.release()
         cv2.destroyAllWindows()
-    recording.save(args.file, times, hands)
+    recording.save(args.file, times, hands, aspect=aspect)
     seen = sum(h is not None for h in hands)
     print(f"✅ {len(times)} fotogramas ({seen} con mano) guardados en {args.file}")
     print(f"Reprodúcelo con otros ajustes:  aircontrol replay {args.file} --set pinch_on=0.25")
@@ -79,7 +80,8 @@ def cmd_replay(args):
     if errors:
         print("\n".join(errors))
         return 1
-    events, summary = recording.replay(times, hands, settings, screen=system.screen_size())
+    events, summary = recording.replay(times, hands, settings, screen=system.screen_size(),
+                                       aspect=recording.load_aspect(args.file))
     shown = [e for e in events if e[0] != "move"]
     duration = times[-1] - times[0] if len(times) > 1 else 0
     print(f"{len(times)} fotogramas · {duration:.1f} s · ajustes cambiados: {changes or 'ninguno'}")
