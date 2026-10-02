@@ -23,7 +23,8 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: actions/setup-python@v5            # Chaquopy necesita un Python en la máquina de compilación para instalar numpy
         with: { python-version: "3.11" }
-      - uses: android-actions/setup-android@v3   # SDK de Android y aceptación de licencias en el servidor de CI
+      - name: Licencias del SDK de Android (el servidor de CI ya lo trae instalado)
+        run: yes | "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager --licenses > /dev/null || true
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.14.3" }
       - name: Compilar el APK
