@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 
 from .geometry import CONNECTIONS
+from .keyboard import TEXT_H
 
 MODE_COLORS = {"idle": (170, 170, 170), "point": (0, 255, 120), "pinch": (0, 200, 255),
                "drag": (0, 140, 255), "scroll": (255, 200, 0), "paused": (80, 80, 255)}
@@ -48,7 +49,7 @@ def draw(frame, lm, status, settings):
     if status.last_action:
         cv2.putText(frame, status.last_action.encode("ascii", "replace").decode(), (10, h - 40), FONT, 0.55,
                     (0, 255, 200), 1, cv2.LINE_AA)
-    hint = "Puno 1s = reanudar" if status.paused else "Puno sostenido = pausa"
+    hint = "Puno 1s = reanudar" if status.paused else "Puno = pausa  |  Menique arriba = teclado"
     cv2.putText(frame, f"{hint}   |   q / ESC = salir", (10, h - 12), FONT, 0.45, (170, 170, 170), 1, cv2.LINE_AA)
     return frame
 
@@ -58,11 +59,23 @@ def _center_text(img, text, cx, cy, scale, color, thickness=1):
     cv2.putText(img, text, (int(cx - tw / 2), int(cy + th / 2)), FONT, scale, color, thickness, cv2.LINE_AA)
 
 
-def draw_keyboard(kb, uv, now, size=(1100, 400)):
-    """Teclado aéreo como imagen: tecla bajo el puntero resaltada con su barra de progreso de permanencia."""
+def draw_keyboard(kb, uv, now, size=(1100, 400), mode="hand"):
+    """Teclado aéreo como imagen: lo escrito y la app de destino arriba, sugerencias, y teclas con la tecla bajo el
+    puntero resaltada y su barra de progreso de permanencia."""
     w, h = size
     img = np.full((h, w, 3), 28, "uint8")
     progress = kb.dwell_progress(now)
+
+    # Franja de texto: lo último escrito (se ve aunque el foco esté en otra app) y adónde va.
+    th = int(TEXT_H * h)
+    cv2.rectangle(img, (0, 0), (w, th), (20, 20, 20), -1)
+    target = kb.target or "la app en primer plano"
+    cv2.putText(img, f"Escribiendo en: {target}", (12, int(th * 0.68)), FONT, 0.55, (0, 200, 255), 1, cv2.LINE_AA)
+    shown = kb.typed[-34:] or ("pellizca una tecla" if mode == "hand" else "mira una tecla 1 s")
+    (tw, _), _ = cv2.getTextSize(shown, FONT, 0.7, 2)
+    cv2.putText(img, shown, (max(w - tw - 14, int(w * 0.42)), int(th * 0.7)), FONT, 0.7,
+                (240, 240, 240) if kb.typed else (120, 120, 120), 2 if kb.typed else 1, cv2.LINE_AA)
+
     for key, label, x0, y0, x1, y1 in kb.layout():
         p0, p1 = (int(x0 * w) + 3, int(y0 * h) + 3), (int(x1 * w) - 3, int(y1 * h) - 3)
         hover = key == kb.hover
@@ -80,7 +93,7 @@ def draw_keyboard(kb, uv, now, size=(1100, 400)):
         text = kb.display(label)
         scale = 0.9 if len(text) > 3 else 1.3
         ascii_text = text.encode("ascii", "replace").decode() if not text.isalnum() and len(text) > 1 else text
-        _center_text(img, {"⌫": "<-", "⏎": "OK", "⇧": "^", "←": "<", "→": ">", "✕": "X"}.get(text, ascii_text),
+        _center_text(img, {"⌫": "<-", "⏎": "OK", "⇧": "^", "←": "<", "→": ">", "✕": "X", "123": "123", "abc": "abc"}.get(text, ascii_text),
                      (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, scale, (240, 240, 240), 2)
     if uv is not None and 0 <= uv[0] <= 1 and 0 <= uv[1] <= 1:
         cv2.circle(img, (int(uv[0] * w), int(uv[1] * h)), 9, (0, 220, 255), 2, cv2.LINE_AA)

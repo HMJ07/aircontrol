@@ -9,7 +9,7 @@ from .geometry import finger_states, gesture_features, is_thumbs_up
 
 MIN_SAMPLES = 3
 # Nombres reservados: el puño sostenido pausa/reanuda el control, los demás vienen integrados.
-BUILTIN = ("thumbs_up", "swipe_left", "swipe_right", "swipe_up", "swipe_down")
+BUILTIN = ("thumbs_up", "pinky_up", "swipe_left", "swipe_right", "swipe_up", "swipe_down")
 RESERVED = BUILTIN + ("fist",)
 
 
@@ -134,10 +134,12 @@ class SwipeDetector:
 
 
 def builtin_pose(lm):
-    """Poses estáticas integradas: 'fist' (pausa) y 'thumbs_up'."""
+    """Poses estáticas integradas: 'fist' (pausa), 'thumbs_up' y 'pinky_up' (meñique solo, 🤙: abre el teclado)."""
     fingers = finger_states(lm)
     if is_thumbs_up(lm, fingers):
         return "thumbs_up"
+    if fingers[1:] == [0, 0, 0, 1]:                  # solo el meñique (con o sin pulgar: 🤙)
+        return "pinky_up"
     if sum(fingers[1:]) == 0:
         return "fist"
     return None

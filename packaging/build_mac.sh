@@ -27,8 +27,14 @@ xattr -cr "$APP" 2>/dev/null || true
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
 
+# Imagen de disco con el atajo a Aplicaciones: se instala arrastrando la app encima. `ditto` conserva la firma.
+STAGE="$WORK/dmg-root"
+rm -rf "$STAGE"; mkdir -p "$STAGE"
+ditto "$APP" "$STAGE/AirControl.app"
+ln -s /Applications "$STAGE/Applications"
+
 mkdir -p "$ROOT/dist"
 rm -f "$ROOT/dist/AirControl-macOS.dmg"
-hdiutil create -volname "AirControl" -srcfolder "$APP" -ov -format UDZO "$WORK/AirControl-macOS.dmg"
+hdiutil create -volname "AirControl" -srcfolder "$STAGE" -ov -format UDZO "$WORK/AirControl-macOS.dmg"
 cp "$WORK/AirControl-macOS.dmg" "$ROOT/dist/"
 echo "✅ dist/AirControl-macOS.dmg  (app sin empaquetar en: $APP)"

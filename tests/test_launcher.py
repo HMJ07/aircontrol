@@ -98,7 +98,7 @@ class WebTests(unittest.TestCase):
         threads = [threading.Thread(target=save, args=kv) for kv in keys.items()]
         [t.start() for t in threads]
         [t.join() for t in threads]
-        self.assertEqual(json.loads(config.SETTINGS_PATH.read_text()), keys)
+        self.assertEqual(json.loads(config.SETTINGS_PATH.read_text(encoding="utf-8")), keys)
 
     def test_concurrent_commands_are_not_lost(self):
         import threading
@@ -120,7 +120,7 @@ class WebTests(unittest.TestCase):
         self.login()
         r = self.post("/api/settings", {"pinch_on": 0.22, "gaze_click": "blink"})
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(json.loads(config.SETTINGS_PATH.read_text()), {"pinch_on": 0.22, "gaze_click": "blink"})
+        self.assertEqual(json.loads(config.SETTINGS_PATH.read_text(encoding="utf-8")), {"pinch_on": 0.22, "gaze_click": "blink"})
         bad = self.post("/api/settings", {"pinch_on": 50})
         self.assertEqual(bad.status_code, 400)
         self.assertEqual(Settings.load().pinch_on, 0.22)                       # lo inválido no pisa lo válido
@@ -132,12 +132,12 @@ class WebTests(unittest.TestCase):
         self.login()
         good = {"default": {"thumbs_up": "click"}, "profiles": [{"name": "X", "match": ["x"], "bindings": {"swipe_up": "key:mod+r"}}]}
         self.assertEqual(self.post("/api/profiles", good).status_code, 200)
-        self.assertEqual(json.loads(config.PROFILES_PATH.read_text()), good)
+        self.assertEqual(json.loads(config.PROFILES_PATH.read_text(encoding="utf-8")), good)
         bad = {"default": {"thumbs_up": "hackear"}, "profiles": []}
         r = self.post("/api/profiles", bad)
         self.assertEqual(r.status_code, 400)
         self.assertTrue(r.get_json()["errors"])
-        self.assertEqual(json.loads(config.PROFILES_PATH.read_text()), good)   # no se guarda lo inválido
+        self.assertEqual(json.loads(config.PROFILES_PATH.read_text(encoding="utf-8")), good)   # no se guarda lo inválido
         self.assertEqual(self.post("/api/profiles", [1, 2]).status_code, 400)
 
     def test_delete_gesture(self):

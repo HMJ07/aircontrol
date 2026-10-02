@@ -104,6 +104,9 @@ class BuiltinPoseTests(unittest.TestCase):
     def test_poses(self):
         self.assertEqual(builtin_pose(fist()), "fist")
         self.assertEqual(builtin_pose(hand(thumb_up=True)), "thumbs_up")
+        self.assertEqual(builtin_pose(hand(pinky=1)), "pinky_up")
+        self.assertEqual(builtin_pose(hand(thumb=1, pinky=1)), "pinky_up")      # 🤙 con el pulgar fuera también
+        self.assertIsNone(builtin_pose(hand(index=1, pinky=1)))                 # otro dedo extendido: no es el gesto
         self.assertIsNone(builtin_pose(open_palm()))
         self.assertIsNone(builtin_pose(point()))
 

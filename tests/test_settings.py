@@ -58,7 +58,7 @@ class SettingsApplyTests(unittest.TestCase):
         s.apply({"pinch_on": 0.22, "gaze_click": "blink"})
         with mock.patch.object(config, "SETTINGS_PATH", path):
             s.save()
-            self.assertEqual(json.loads(path.read_text()), {"pinch_on": 0.22, "gaze_click": "blink"})
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"pinch_on": 0.22, "gaze_click": "blink"})
             self.assertEqual(config.Settings.load().pinch_on, 0.22)
 
     def test_describe_lists_every_field_with_label(self):
@@ -83,7 +83,7 @@ class AtomicWriteTests(unittest.TestCase):
 
         with mock.patch("aircontrol.fsutil.os.replace", flaky):
             write_text_atomic(path, "hola")
-        self.assertEqual(path.read_text(), "hola")
+        self.assertEqual(path.read_text(encoding="utf-8"), "hola")
         self.assertEqual(len(calls), 4)
         self.assertEqual([p.name for p in path.parent.iterdir()], ["f.json"])       # sin temporales huérfanos
 
@@ -106,7 +106,7 @@ class AtomicWriteTests(unittest.TestCase):
         def reader():
             while not stop.is_set():
                 try:
-                    json.loads(path.read_text())
+                    json.loads(path.read_text(encoding="utf-8"))
                 except ValueError:
                     bad.append(1)
 
@@ -117,3 +117,14 @@ class AtomicWriteTests(unittest.TestCase):
         stop.set()
         t.join()
         self.assertEqual(bad, [])
+
+
+class FocusAppTests(unittest.TestCase):
+    def test_macos_uses_open_dash_a_and_ignores_empty_names(self):
+        from aircontrol import system
+        with mock.patch.object(system.sys, "platform", "darwin"), mock.patch("subprocess.Popen") as popen:
+            self.assertTrue(system.focus_app("Safari"))
+            self.assertEqual(popen.call_args[0][0], ["open", "-a", "Safari"])
+            popen.reset_mock()
+            self.assertFalse(system.focus_app(""))
+            popen.assert_not_called()

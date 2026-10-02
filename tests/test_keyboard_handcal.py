@@ -61,7 +61,7 @@ class KeyboardTests(unittest.TestCase):
     def test_layers_and_close(self):
         kb = KeyboardState()
         kb.press("symbols")
-        self.assertEqual(kb.key_at(*center(kb, "1")), "1")
+        self.assertEqual(kb.key_at(*center(kb, "@")), "@")
         kb.press("letters")
         self.assertEqual(kb.press("close"), [("close",)])
 
@@ -73,6 +73,59 @@ class KeyboardTests(unittest.TestCase):
         key = "suggest:hola"
         self.assertEqual(kb.press(key), [("type", "a ")])        # solo lo que falta + espacio
         self.assertEqual(kb.word, "")
+
+    def test_numbers_are_on_the_main_layer_without_switching(self):
+        kb = KeyboardState()
+        self.assertEqual(kb.layer, "letters")
+        for digit in "1234567890":
+            self.assertEqual(kb.key_at(*center(kb, digit)), digit)
+            self.assertEqual(kb.press(digit), [("type", digit)])
+
+    def test_digits_never_form_words_or_suggestions(self):
+        kb = KeyboardState()
+        for ch in "ho1":
+            kb.press(ch)
+        self.assertEqual(kb.word, "")                     # el número corta la palabra
+        kb.press("2"); kb.press("3")
+        self.assertEqual(suggestions(kb.word), [])
+
+    def test_typed_strip_follows_what_you_type_and_backspace(self):
+        kb = KeyboardState()
+        for k in "hola":
+            kb.press(k)
+        kb.press("space"); kb.press("2"); kb.press("backspace"); kb.press("3")
+        self.assertEqual(kb.typed, "hola 3")
+        kb.press("enter")
+        self.assertTrue(kb.typed.endswith("⏎"))
+        for _ in range(100):
+            kb.press("a")
+        self.assertLessEqual(len(kb.typed), 60)                # solo lo reciente
+
+    def test_suggestion_is_added_to_typed(self):
+        kb = KeyboardState()
+        for k in "hol":
+            kb.press(k)
+        kb.press("suggest:hola")
+        self.assertEqual(kb.typed, "hola ")
+
+    def test_symbols_layer_has_no_duplicates_and_all_reachable(self):
+        kb = KeyboardState()
+        kb.press("symbols")
+        keys = [k for k, *_ in kb.layout() if not k.startswith("suggest:")]
+        self.assertEqual(len(keys), len(set(keys)), [k for k in keys if keys.count(k) > 1])
+        for key in keys:
+            self.assertEqual(kb.key_at(*center(kb, key)), key)
+
+    def test_drawn_keyboard_has_header_and_expected_size(self):
+        from aircontrol.ui import draw_keyboard
+        kb = KeyboardState()
+        kb.target = "Safari"
+        for k in "hola":
+            kb.press(k)
+        img = draw_keyboard(kb, (0.5, 0.5), 0.0, size=(1000, 400))
+        self.assertEqual(img.shape, (400, 1000, 3))
+        self.assertTrue((img[2:20, 2:200] != 20).any())            # franja superior con texto ("Escribiendo en: Safari")
+        self.assertGreater(len({tuple(p) for p in img[::40, ::40].reshape(-1, 3)}), 2)
 
     def test_pointer_outside_does_nothing(self):
         kb = KeyboardState()

@@ -23,6 +23,12 @@ NOSE, CHIN, FOREHEAD, CHEEK_L, CHEEK_R = 1, 152, 10, 234, 454
 
 FEATURE_NAMES = ("h", "v", "yaw", "pitch", "nx", "ny")
 
+# Apertura de ojo (EAR) por debajo de la cual el ojo está CERRADO. Al mirar hacia abajo los párpados bajan y el EAR cae
+# a ~0,1 con los ojos abiertos (medido en una calibración real), así que el umbral debe ser mucho menor que eso.
+CLOSED_EAR = 0.06
+MIN_PER_POINT = 8                     # muestras mínimas para dar un punto de calibración por bueno
+MAX_RETRIES = 2                       # veces que se repite un punto sin muestras suficientes
+
 
 def _pt(face, i, aspect):
     return np.array([face[i][0] * aspect, face[i][1]], dtype=np.float64)
@@ -53,60 +59,115 @@ def extract_features(face, aspect=4 / 3):
     return feats, (ear_l + ear_r) / 2
 
 
-def _phi(x):
-    """Términos de la regresión: 1, las 6 características y h², v², h·v (la mirada no es lineal en el iris)."""
+def _phi(x, quad=True):
+    """Términos de la regresión: 1 y las 6 características; con `quad`, también h², v² y h·v."""
     x = np.atleast_2d(x)
-    h, v = x[:, 0], x[:, 1]
-    return np.column_stack([np.ones(len(x)), x, h * h, v * v, h * v])
+    cols = [np.ones(len(x)), *x.T]
+    if quad:
+        h, v = x[:, 0], x[:, 1]
+        cols += [h * h, v * v, h * v]
+    return np.column_stack(cols)
+
+
+def trim_outliers(feats, groups, z=3.5):
+    """Máscara de muestras válidas: dentro de cada punto de calibración se descartan los fotogramas que se alejan de la
+    mediana (parpadeos, saltos del landmark del iris). Si se descartaría casi todo un punto, se conserva entero."""
+    keep = np.ones(len(feats), dtype=bool)
+    for g in np.unique(groups):
+        idx = np.where(groups == g)[0]
+        if len(idx) < 6:
+            continue
+        x = feats[idx]
+        med = np.median(x, axis=0)
+        mad = np.median(np.abs(x - med), axis=0) * 1.4826 + 1e-6
+        ok = (np.abs(x - med) / mad).max(axis=1) < z
+        if ok.mean() >= 0.4:
+            keep[idx] = ok
+    return keep
 
 
 class GazeModel:
-    def __init__(self, mean, std, weights, screen, rms=None):
+    # Candidatos (¿términos cuadráticos?, regularización relativa al nº de muestras). Se elige el mejor por validación.
+    CANDIDATES = [(False, 0.01), (False, 0.1), (False, 1.0), (True, 0.1), (True, 1.0), (True, 5.0)]
+
+    def __init__(self, mean, std, weights, screen, rms=None, quad=True, rms_all=None):
         self.mean, self.std, self.weights = np.asarray(mean), np.asarray(std), np.asarray(weights)
-        self.screen, self.rms = tuple(screen), rms
+        self.screen, self.rms, self.quad, self.rms_all = tuple(screen), rms, quad, rms_all
 
     @staticmethod
-    def _fit_weights(feats, targets, ridge):
+    def _fit_weights(feats, targets, ridge, quad):
         mean, std = feats.mean(axis=0), feats.std(axis=0) + 1e-9
-        phi = _phi((feats - mean) / std)
-        reg = ridge * np.eye(phi.shape[1])
+        phi = _phi((feats - mean) / std, quad)
+        reg = ridge * len(feats) * np.eye(phi.shape[1])
         reg[0, 0] = 0                                           # el término constante no se penaliza
         return mean, std, np.linalg.solve(phi.T @ phi + reg, phi.T @ targets)
 
+    @staticmethod
+    def _corner_groups(targets, groups):
+        """Puntos de calibración que son esquinas: para validarlos hay que EXTRAPOLAR, así que no cuentan en el error."""
+        ids = np.unique(groups)
+        pts = np.array([targets[groups == g][0] for g in ids])
+        lo, hi = pts.min(axis=0), pts.max(axis=0)
+        span = np.maximum(hi - lo, 1.0)
+        edge = (np.abs(pts - lo) < 0.05 * span) | (np.abs(pts - hi) < 0.05 * span)
+        return {g for g, e in zip(ids, edge) if e.all()}
+
     @classmethod
-    def fit(cls, feats, targets, screen, groups=None, ridge=0.05):
-        """`feats` (N,6), `targets` (N,2) en píxeles. `groups`: id de cada punto de calibración, para validar
-        dejando fuera un punto entero cada vez (RMS honesto en píxeles)."""
+    def _cv(cls, feats, targets, groups, screen, quad, ridge, corners):
+        """Error por puntos dejando fuera cada punto de calibración (predicción recortada a la pantalla)."""
+        inner, every = [], []
+        for g in np.unique(groups):
+            train, test = groups != g, groups == g
+            if train.sum() < 12:
+                continue
+            m, s, w = cls._fit_weights(feats[train], targets[train], ridge, quad)
+            pred = _phi((feats[test] - m) / s, quad) @ w
+            pred = np.clip(pred, 0, np.array(screen) - 1)
+            err = np.linalg.norm(pred - targets[test], axis=1)
+            every.extend(err)
+            if g not in corners:
+                inner.extend(err)
+        rms = lambda e: float(np.sqrt(np.mean(np.square(e)))) if len(e) else None
+        return rms(inner or every), rms(every)
+
+    @classmethod
+    def fit(cls, feats, targets, screen, groups=None):
+        """`feats` (N,6), `targets` (N,2) en píxeles. Con `groups` (id del punto de calibración de cada muestra) se
+        descartan atípicos, se prueban varios modelos y se elige el de menor error dejando fuera cada punto."""
         feats, targets = np.asarray(feats, float), np.asarray(targets, float)
         if len(feats) < 12 or feats.std(axis=0).max() < 1e-6:
             raise ValueError("muestras insuficientes para calibrar")
-        rms = None
-        if groups is not None:
-            groups = np.asarray(groups)
-            errs = []
-            for g in np.unique(groups):
-                train, test = groups != g, groups == g
-                if train.sum() < 12:
-                    continue
-                m, s, w = cls._fit_weights(feats[train], targets[train], ridge)
-                pred = _phi((feats[test] - m) / s) @ w
-                errs.extend(np.linalg.norm(pred - targets[test], axis=1))
-            rms = float(np.sqrt(np.mean(np.square(errs)))) if errs else None
-        mean, std, w = cls._fit_weights(feats, targets, ridge)
-        return cls(mean, std, w, screen, rms)
+        if groups is None:
+            mean, std, w = cls._fit_weights(feats, targets, 0.1, False)
+            return cls(mean, std, w, screen, None, quad=False)
+        groups = np.asarray(groups)
+        keep = trim_outliers(feats, groups)
+        feats, targets, groups = feats[keep], targets[keep], groups[keep]
+        corners = cls._corner_groups(targets, groups)
+        best = None
+        for quad, ridge in cls.CANDIDATES:
+            rms, rms_all = cls._cv(feats, targets, groups, screen, quad, ridge, corners)
+            if rms is not None and (best is None or rms < best[0]):
+                best = (rms, rms_all, quad, ridge)
+        if best is None:
+            mean, std, w = cls._fit_weights(feats, targets, 0.1, False)
+            return cls(mean, std, w, screen, None, quad=False)
+        rms, rms_all, quad, ridge = best
+        mean, std, w = cls._fit_weights(feats, targets, ridge, quad)
+        return cls(mean, std, w, screen, rms, quad=quad, rms_all=rms_all)
 
     def predict(self, feats):
-        p = (_phi((np.asarray(feats, float) - self.mean) / self.std) @ self.weights)[0]
+        p = (_phi((np.asarray(feats, float) - self.mean) / self.std, self.quad) @ self.weights)[0]
         return (min(max(p[0], 0.0), self.screen[0] - 1), min(max(p[1], 0.0), self.screen[1] - 1))
 
     def to_json(self):
         return json.dumps({"mean": self.mean.tolist(), "std": self.std.tolist(), "weights": self.weights.tolist(),
-                           "screen": list(self.screen), "rms": self.rms})
+                           "screen": list(self.screen), "rms": self.rms, "quad": self.quad, "rms_all": self.rms_all})
 
     @classmethod
     def from_json(cls, text):
         d = json.loads(text)
-        return cls(d["mean"], d["std"], d["weights"], d["screen"], d.get("rms"))
+        return cls(d["mean"], d["std"], d["weights"], d["screen"], d.get("rms"), d.get("quad", True), d.get("rms_all"))
 
 
 class GazeCalibration:
@@ -116,11 +177,12 @@ class GazeCalibration:
     GRID = [(0.5, 0.5), (0.08, 0.08), (0.92, 0.08), (0.08, 0.92), (0.92, 0.92),
             (0.5, 0.08), (0.5, 0.92), (0.08, 0.5), (0.92, 0.5)]
 
-    def __init__(self, screen, settle_s=0.9, collect_s=1.0, points=None):
+    def __init__(self, screen, settle_s=1.2, collect_s=1.2, points=None):
         self.screen, self.settle_s, self.collect_s = screen, settle_s, collect_s
         self.points = points or self.GRID
         self.index, self.started = 0, None
-        self.feats, self.targets, self.groups = [], [], []
+        self.retries = {}
+        self.feats, self.targets, self.groups, self.ears = [], [], [], []
         self.model = None
         self.error = None
 
@@ -139,6 +201,9 @@ class GazeCalibration:
             return self.index, len(self.points), "settle", t / self.settle_s
         return self.index, len(self.points), "collect", min(1.0, (t - self.settle_s) / self.collect_s)
 
+    def retrying(self):
+        return self.retries.get(self.index, 0) > 0
+
     def update(self, features, ear, now, eyes_open=True):
         """Un fotograma. `features` None si no hay cara. Devuelve True al terminar."""
         if self.done:
@@ -150,11 +215,22 @@ class GazeCalibration:
             self.feats.append(features)
             self.targets.append(self.target_px())
             self.groups.append(self.index)
+            self.ears.append(ear)
         if t >= self.settle_s + self.collect_s:
+            got = self.groups.count(self.index)
+            if got < MIN_PER_POINT and self.retries.get(self.index, 0) < MAX_RETRIES:
+                self.retries[self.index] = self.retries.get(self.index, 0) + 1     # sin muestras: se repite el punto
+                self.started = None
+                return False
             self.index, self.started = self.index + 1, None
             if self.done:
                 self._finish()
         return self.done
+
+    @property
+    def missing(self):
+        """Puntos de calibración que se quedaron sin muestras suficientes (aun tras repetirlos)."""
+        return [i for i in range(len(self.points)) if self.groups.count(i) < MIN_PER_POINT]
 
     def _finish(self):
         try:
@@ -167,8 +243,8 @@ class BlinkDetector:
     """Parpadeo largo (cerrar los ojos entre `min_s` y `max_s`) = clic. Los parpadeos normales se ignoran.
     La apertura se compara con la mediana reciente, así sirve para ojos de cualquier forma."""
 
-    def __init__(self, min_s=0.6, max_s=2.0, closed_ratio=0.55):
-        self.min_s, self.max_s, self.closed_ratio = min_s, max_s, closed_ratio
+    def __init__(self, min_s=0.6, max_s=2.0, closed_ratio=0.55, closed_abs=CLOSED_EAR):
+        self.min_s, self.max_s, self.closed_ratio, self.closed_abs = min_s, max_s, closed_ratio, closed_abs
         self._open = deque(maxlen=90)
         self._closed_since = None
         self.closed = False
@@ -179,7 +255,8 @@ class BlinkDetector:
             self._closed_since, self.closed = None, False
             return False
         baseline = float(np.median(self._open)) if len(self._open) >= 10 else None
-        is_closed = baseline is not None and ear < baseline * self.closed_ratio
+        # Cerrado = mucho menos que lo habitual Y casi sin apertura. Solo lo primero confundía "mirar abajo" con cerrar.
+        is_closed = baseline is not None and ear < baseline * self.closed_ratio and ear < self.closed_abs
         fired = False
         if is_closed:
             self._closed_since = self._closed_since if self._closed_since is not None else now

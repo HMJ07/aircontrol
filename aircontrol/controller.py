@@ -34,7 +34,7 @@ class Controller:
         self.mouse = AirMouse(settings, backend.screen_size())
         self.recognizer = GestureRecognizer(store, threshold=settings.gesture_threshold)
         self.swipes = SwipeDetector(settings.swipe_distance)
-        self.holds = HoldDetector(settings.gesture_hold_s, holds={"fist": settings.pause_hold_s, "thumbs_up": 0.6})
+        self.holds = HoldDetector(settings.gesture_hold_s, holds={"fist": settings.pause_hold_s, "thumbs_up": 0.6, "pinky_up": 0.8})
         self.runner = ActionRunner(backend, on_control=self._control, log=log)
         self.paused = False
         self.input_mode = "hand"
@@ -74,7 +74,11 @@ class Controller:
         if on and self.keyboard is None:
             self.keyboard = KeyboardState(self.cfg.keyboard_dwell_s)
             self.kb_uv = None
-            self.log("⌨️  Teclado aéreo abierto")
+            target = self.app_provider() or ""                    # la app que está detrás de AirControl
+            self.keyboard.target = target
+            if target:                                            # si el foco quedó en AirControl, lo escrito se perdería
+                self.backend.focus_app(target)
+            self.log(f"⌨️  Teclado aéreo abierto (escribe en: {target or 'la app en primer plano'})")
         elif not on and self.keyboard is not None:
             self.keyboard = None
             self.log("⌨️  Teclado aéreo cerrado")
@@ -88,7 +92,10 @@ class Controller:
         """Procesa un fotograma (`lm` = landmarks de la mano, `face` = de la cara; None si no hay) y devuelve
         el Status para el overlay."""
         custom = self.recognizer.classify(lm)[0] if lm is not None and not self.paused else None
-        pose = custom or (builtin_pose(lm) if lm is not None else None)
+        # Pellizcando o arrastrando, la mano (índice curvado, resto plegado) parece un puño o un pulgar: sin esto un
+        # arrastre largo pausaba el control (puño 1,2 s) y escribir con pellizco disparaba gestos.
+        pinching = self.mouse.mode in ("pinch", "drag")
+        pose = custom or (builtin_pose(lm) if lm is not None and not pinching else None)
         fired = self.holds.update(pose, now)
         if self.paused:
             pose = pose if pose == "fist" else None
@@ -108,6 +115,8 @@ class Controller:
             return self._status(now, pose)
 
         gesture = fired or self.swipes.update(lm, now)
+        if gesture and self.keyboard is not None:
+            gesture = None        # con el teclado abierto los gestos no disparan nada: se cierra con ✕, la voz o el menú
         if gesture:
             action = self.profiles.resolve(gesture, self._current_app(now))
             if action:
@@ -151,6 +160,7 @@ class Controller:
     def _keyboard_frame(self, lm, face, aspect, now, active, use_gaze):
         """Con el teclado abierto el puntero no mueve el cursor del sistema: elige teclas."""
         uv, pinch = None, False
+        self.keyboard.target = self._current_app(now) or self.keyboard.target
         if use_gaze:
             self.mouse.update(None, now, active=False)
             self.gaze.click_enabled = False

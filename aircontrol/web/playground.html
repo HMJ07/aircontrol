@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>AirControl · Zona de pruebas</title>
+<style>
+  :root { --bg:#14161a; --card:#1d2025; --ink:#eef0f3; --mute:#9aa0a8; --line:#333842; --ok:#22c55e; --hot:#f59e0b; }
+  * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--ink); font:18px/1.4 system-ui,sans-serif; user-select:none; }
+  header { padding:14px 22px; background:var(--card); border-bottom:1px solid var(--line); display:flex; gap:24px; align-items:baseline; }
+  h1 { margin:0; font-size:22px; } #last { font:600 22px ui-monospace,monospace; color:var(--hot); }
+  main { display:grid; grid-template-columns:1fr 1fr 340px; gap:16px; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
+  h2 { margin:0 0 10px; font-size:16px; color:var(--mute); text-transform:uppercase; letter-spacing:.06em; }
+  .big { display:flex; align-items:center; justify-content:center; height:92px; border-radius:12px; border:2px solid var(--line); font-size:22px; margin-bottom:10px; cursor:pointer; }
+  .big b { font-size:34px; margin-left:14px; color:var(--ok); }
+  .big:active { background:#2a2f38; }
+  #zone { position:relative; height:200px; border:2px dashed var(--line); border-radius:12px; overflow:hidden; }
+  #box { position:absolute; left:20px; top:20px; width:90px; height:90px; border-radius:12px; background:var(--hot); display:flex; align-items:center; justify-content:center; color:#111; font-weight:700; cursor:grab; }
+  #drag { margin-top:8px; color:var(--mute); font:16px ui-monospace,monospace; }
+  #list { height:220px; overflow:auto; border:2px solid var(--line); border-radius:12px; user-select:none; }
+  #list div { padding:10px 16px; border-bottom:1px solid var(--line); font-size:20px; } #scroll { margin-top:8px; color:var(--mute); font:16px ui-monospace,monospace; }
+  textarea { width:100%; height:120px; background:var(--bg); color:var(--ink); border:2px solid var(--line); border-radius:12px; padding:10px; font:22px system-ui; user-select:text; }
+  #tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; } .tile { height:84px; border:2px solid var(--line); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; cursor:pointer; }
+  .tile.on { background:var(--ok); color:#06240f; border-color:var(--ok); }
+  #log { font:15px ui-monospace,monospace; color:var(--mute); height:calc(100vh - 110px); overflow:hidden; } #log div { padding:2px 0; border-bottom:1px solid #262a31; } #log b { color:var(--ink); }
+</style>
+</head>
+<body>
+<header><h1>AirControl · zona de pruebas</h1><span id="last">—</span></header>
+<main>
+  <div>
+    <div class="card"><h2>1 · Clic, doble clic y clic derecho</h2>
+      <div class="big" id="click">CLIC <b id="nClick">0</b></div>
+      <div class="big" id="dbl">DOBLE CLIC <b id="nDbl">0</b></div>
+      <div class="big" id="right">CLIC DERECHO <b id="nRight">0</b></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h2>2 · Arrastrar la caja</h2>
+      <div id="zone"><div id="box">ARRASTRA</div></div><div id="drag">sin arrastrar</div>
+    </div>
+  </div>
+  <div>
+    <div class="card"><h2>3 · Scroll</h2><div id="list"></div><div id="scroll">scrollTop = 0</div></div>
+    <div class="card" style="margin-top:16px"><h2>4 · Escribir (haz clic dentro y teclea)</h2><textarea id="txt" placeholder="escribe aquí…"></textarea></div>
+    <div class="card" style="margin-top:16px"><h2>5 · Mirada: pulsa cada casilla</h2><div id="tiles"></div></div>
+  </div>
+  <div class="card"><h2>Eventos recibidos</h2><div id="log"></div></div>
+</main>
+<script>
+const $ = id => document.getElementById(id), t0 = Date.now();
+const log = (kind, detail="") => { $("last").textContent = kind + (detail ? " " + detail : "");
+  const row = document.createElement("div"); row.innerHTML = `<b>${((Date.now()-t0)/1000).toFixed(1)}s</b> ${kind} ${detail}`;
+  $("log").prepend(row); while ($("log").children.length > 26) $("log").lastChild.remove(); };
+const count = (id, n) => $(id).textContent = (+$(id).textContent) + n;
+$("click").onclick = () => { count("nClick", 1); log("click", "izq"); };
+$("dbl").ondblclick = () => { count("nDbl", 1); log("dblclick"); };
+$("right").oncontextmenu = e => { e.preventDefault(); count("nRight", 1); log("contextmenu", "der"); };
+document.addEventListener("contextmenu", e => e.preventDefault());
+// arrastrar
+let drag = null;
+$("box").onmousedown = e => { const r = $("box").getBoundingClientRect(); drag = {dx: e.clientX - r.left, dy: e.clientY - r.top}; log("mousedown", "caja"); e.preventDefault(); };
+addEventListener("mousemove", e => { if (!drag) return; const z = $("zone").getBoundingClientRect();
+  const x = Math.min(Math.max(e.clientX - z.left - drag.dx, 0), z.width - 90), y = Math.min(Math.max(e.clientY - z.top - drag.dy, 0), z.height - 90);
+  $("box").style.left = x + "px"; $("box").style.top = y + "px"; $("drag").textContent = `arrastrando… x=${x|0} y=${y|0}`; });
+addEventListener("mouseup", () => { if (drag) { log("mouseup", "soltada"); $("drag").textContent = "soltada en " + $("box").style.left + ", " + $("box").style.top; drag = null; } });
+// scroll
+for (let i = 1; i <= 60; i++) $("list").append(Object.assign(document.createElement("div"), {textContent: `Línea ${i}`}));
+$("list").addEventListener("scroll", () => { $("scroll").textContent = "scrollTop = " + $("list").scrollTop; });
+$("list").addEventListener("wheel", e => log("wheel", "dy=" + Math.round(e.deltaY)), {passive: true});
+// teclado
+$("txt").addEventListener("keydown", e => log("tecla", JSON.stringify(e.key)));
+// casillas
+for (let i = 1; i <= 12; i++) { const d = Object.assign(document.createElement("div"), {className: "tile", textContent: i});
+  d.onclick = () => { d.classList.add("on"); log("casilla", i); }; $("tiles").append(d); }
+</script>
+</body>
+</html>

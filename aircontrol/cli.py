@@ -364,6 +364,16 @@ def cmd_check_hand(args):
     return 0 if not failed else 1
 
 
+def cmd_playground(_args):
+    """Abre una página local con botones, arrastre, scroll, texto y casillas que muestra cada evento que recibe."""
+    import webbrowser
+    from .launcher import WEB_DIR
+    page = WEB_DIR / "playground.html"
+    print(f"Zona de pruebas: {page}")
+    webbrowser.open(page.as_uri())
+    return 0
+
+
 def cmd_app(args):
     from .launcher import run_app
     return run_app(start_engine=not args.no_engine, open_settings=args.open_settings)
@@ -589,6 +599,8 @@ def main(argv=None):
     ch = sub.add_parser("check-hand", help="prueba guiada con tu mano: qué gestos se reconocen y por qué no")
     ch.add_argument("--only", metavar="PASOS", help="solo estos pasos, separados por comas: point,click,double,drag,right,scroll,thumb")
     ch.set_defaults(func=cmd_check_hand)
+
+    sub.add_parser("playground", help="abre una página de pruebas que muestra cada clic, arrastre, scroll y tecla").set_defaults(func=cmd_playground)
 
     app = sub.add_parser("app", help="icono en la barra de menús + página de ajustes")
     app.add_argument("--no-engine", action="store_true", help="no arrancar el control automáticamente")

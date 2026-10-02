@@ -38,6 +38,7 @@ FACE_MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmark
 MODEL_PATH = RESOURCE_DIR / "models" / "hand_landmarker.task"
 FACE_MODEL_PATH = RESOURCE_DIR / "models" / "face_landmarker.task"
 GAZE_PATH = DATA_DIR / "gaze.json"
+GAZE_SAMPLES_PATH = DATA_DIR / "gaze_samples.npz"      # datos crudos de la última calibración (para diagnosticar)
 GESTURES_PATH = DATA_DIR / "gestures.json"
 PROFILES_PATH = DATA_DIR / "profiles.json"
 SETTINGS_PATH = DATA_DIR / "settings.json"
