@@ -107,8 +107,10 @@ class AtomicWriteTests(unittest.TestCase):
             while not stop.is_set():
                 try:
                     json.loads(path.read_text(encoding="utf-8"))
+                except PermissionError:
+                    pass                      # Windows: el fichero está justo en pleno reemplazo; el código real lo tolera
                 except ValueError:
-                    bad.append(1)
+                    bad.append(1)             # esto sí sería un fichero a medias
 
         t = threading.Thread(target=reader)
         t.start()
