@@ -38,6 +38,13 @@ class CameraHealthTests(unittest.TestCase):
         h.update(True, dim, 0.0)
         self.assertIsNone(h.update(True, dim, 10.0))
 
+    def test_black_frame_with_a_stray_pixel_counts_as_black(self):
+        h = CameraHealth(grace=3.0)
+        sparse = BLACK.copy()
+        sparse[0, 0] = 255
+        h.update(True, sparse, 0.0)
+        self.assertEqual(h.update(True, sparse, 3.5), CameraHealth.BLACK)
+
     def test_notice_lines_are_ascii_for_opencv_font(self):
         for lines in (CameraHealth.BLACK, CameraHealth.NO_FRAMES):
             for line in lines:

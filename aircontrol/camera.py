@@ -1,11 +1,7 @@
-import os
 import sys
 import time
 
-# Media Foundation tarda ~3 s en abrir con las transformaciones por hardware y a veces no entrega nada: se desactivan.
-os.environ.setdefault("OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS", "0")
-
-import cv2  # noqa: E402  (tras fijar la variable de entorno)
+import cv2
 
 
 def _preferred_backend():
@@ -17,14 +13,23 @@ def _preferred_backend():
     return cv2.CAP_ANY
 
 
-def _lit_frame_within(cap, seconds, clock=time.monotonic):
-    """True si en `seconds` llega algún fotograma con imagen (no negro): hay cámaras cuyo modo por defecto abre bien
-    pero entrega negro o 1 fotograma por segundo (p. ej. el 640x480 de algunas webcams integradas en Windows)."""
-    deadline = clock() + seconds
+def has_image(frame):
+    """True si el fotograma tiene imagen de verdad: no basta un píxel suelto en un fotograma negro (algunas webcams
+    integradas devuelven negro con algún píxel encendido cuando su modo está roto), hace falta brillo medio."""
+    sub = frame[::8, ::8]
+    return int(sub.max()) > CameraHealth.BLACK_MAX and float(sub.mean()) > CameraHealth.MIN_MEAN
+
+
+def _lit_frames_within(cap, seconds, needed=3, clock=time.monotonic):
+    """True si en `seconds` llegan `needed` fotogramas con imagen: una cámara con el modo roto da negro o 1 fotograma
+    por segundo (p. ej. el 640x480 de algunas webcams integradas en Windows) y no llega a juntarlos."""
+    deadline, lit = clock() + seconds, 0
     while clock() < deadline:
         ok, frame = cap.read()
-        if ok and frame is not None and int(frame[::8, ::8].max()) > CameraHealth.BLACK_MAX:
-            return True
+        if ok and frame is not None and has_image(frame):
+            lit += 1
+            if lit >= needed:
+                return True
     return False
 
 
@@ -65,34 +70,40 @@ class Camera:
         return cap
 
     def _attempts(self, wanted):
-        """(backend, modo) en orden: lo pedido; en Windows Media Foundation a 720p (el que usa la app Cámara de
-        Windows y el único que va bien en algunas webcams integradas); y luego otros modos con el backend nativo."""
-        seq = [("native", wanted)]
+        """(backend, modo) en orden. En Windows primero Media Foundation (el que usa la app Cámara de Windows: va bien
+        donde el modo 640x480 de DirectShow está roto, y a 30 fps) y, como abrirlo justo después de soltar DirectShow
+        puede tardar más de 10 s, se prueba antes que él. Después, lo pedido y otros modos con el backend nativo."""
+        seq = []
         if sys.platform == "win32":
-            seq.append(("msmf", (1280, 720)))
+            seq.append(("msmf", wanted if wanted[0] >= 1280 else (1280, 720)))
+        seq.append(("native", wanted))
         seq += [("native", size) for size in self.FALLBACK_MODES]
         return seq
 
     def _open_working(self, index, wanted):
-        """Abre la cámara en el modo pedido; si no entrega imagen, prueba otros y se queda con el primero que sí."""
-        tried = set()
+        """Abre la cámara con el primer modo que entrega imagen sostenida; si ninguno, vuelve al pedido."""
+        tried, failed = set(), []
         for n, (kind, size) in enumerate(self._attempts(wanted)):
-            if n and (kind, size) in tried:
+            if (kind, size) in tried:
                 continue
             cap = self._open_at(index, size, kind)
             actual = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-            if n and actual != (0, 0) and (kind, actual) in tried:
+            if actual != (0, 0) and actual != size and (kind, actual) in tried:
                 cap.release()                                       # la cámara redondeó a un modo ya probado
                 continue
             tried.update({(kind, size), (kind, actual)})
-            if _lit_frame_within(cap, self.PROBE_SECONDS, self._clock):
-                if n:
-                    how = " con Media Foundation" if kind == "msmf" else ""
-                    self.note = (f"La cámara no daba imagen en {wanted[0]}x{wanted[1]}; se usa "
-                                 f"{actual[0]}x{actual[1]}{how} (la imagen se reduce a {self.target_width} px de ancho).")
+            if _lit_frames_within(cap, self.PROBE_SECONDS, clock=self._clock):
+                how = "Media Foundation" if kind == "msmf" else "DirectShow/nativo"
+                self.note = f"Cámara {index}: {actual[0]}x{actual[1]} ({how})"
+                if failed:
+                    self.note += f"; sin imagen en {', '.join(failed)}"
+                if actual[0] > self.target_width * self.MAX_WIDTH_FACTOR:
+                    self.note += f"; se reduce a {self.target_width} px de ancho"
                 return cap, actual
+            failed.append(f"{actual[0]}x{actual[1]} {'MSMF' if kind == 'msmf' else 'nativo'}")
             cap.release()
         # Ningún modo da imagen: vuelve al pedido y deja que CameraHealth avise al usuario.
+        self.note = f"Cámara {index}: ningún modo entrega imagen ({', '.join(failed)})"
         return self._open_at(index, wanted), wanted
 
     def read(self):
@@ -115,6 +126,7 @@ class CameraHealth:
     """Detecta una cámara que abre pero no entrega imagen útil (obturador de privacidad, otra app que la tiene en
     exclusiva, driver colgado): sin esto la ventana se queda en negro y no se sabe por qué."""
     BLACK_MAX = 3                       # un fotograma cuyo píxel más claro es <= 3 se considera negro
+    MIN_MEAN = 1.5                      # ...y también si su brillo medio es <= 1.5 (negro con algún píxel suelto)
     NO_FRAMES = ("La camara no entrega fotogramas.",
                  "Cierra otras apps que la usen y reinicia AirControl.")
     BLACK = ("La camara devuelve imagen negra.",
@@ -131,7 +143,7 @@ class CameraHealth:
             self._last_good = now
         if ok and frame is not None:
             self._seen_frame = True
-            if int(frame[::8, ::8].max()) > self.BLACK_MAX:
+            if has_image(frame):
                 self._last_good = now
         if now - self._last_good <= self.grace:
             return None

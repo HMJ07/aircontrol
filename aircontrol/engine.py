@@ -74,7 +74,7 @@ class Engine:
                 from .camera import Camera
                 self.camera = Camera(self.settings)
                 if getattr(self.camera, "note", None):
-                    self.log(f"ℹ️  {self.camera.note}")
+                    self.log(f"📷 {self.camera.note}")
             if self.hands is None:
                 from .hands import HandTracker
                 self.hands = HandTracker()
