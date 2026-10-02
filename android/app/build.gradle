@@ -1,0 +1,73 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.chaquo.python'
+}
+
+android {
+    namespace 'com.aircontrol.app'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.aircontrol.app"
+        minSdk 26                         // StrokeDescription.continueStroke (arrastrar) pide API 26
+        targetSdk 34
+        versionCode 1
+        versionName "0.1.0"
+
+        ndk { abiFilters "arm64-v8a", "x86_64" }       // móviles actuales + emulador; menos peso en el APK
+
+        python {
+            version "3.11"
+            pip { install "numpy" }       // el motor (puntero, gestos, mirada) solo necesita numpy
+        }
+    }
+
+    sourceSets {
+        main {
+            python.srcDir "$buildDir/aircontrol-py"     // los ficheros de ../aircontrol que listan en aircontrol-python-files.txt
+            assets.srcDir "$buildDir/generated/models"  // modelos de MediaPipe descargados al compilar
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.19.1'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.lifecycle:lifecycle-service:2.10.0'
+    implementation 'androidx.camera:camera-core:1.5.3'
+    implementation 'androidx.camera:camera-camera2:1.5.3'
+    implementation 'androidx.camera:camera-lifecycle:1.5.3'
+    implementation 'com.google.mediapipe:tasks-vision:0.10.26'
+}
+
+// El mismo código Python que en el ordenador: se copia (solo lo listado) antes de compilar.
+tasks.register('syncAircontrolPython', Sync) {
+    into "$buildDir/aircontrol-py/aircontrol"
+    file("$rootDir/aircontrol-python-files.txt").readLines().collect { it.trim() }.findAll { it }.each { rel ->
+        from("$rootDir/../aircontrol/$rel") {
+            into(rel.contains('/') ? rel.substring(0, rel.lastIndexOf('/')) : '')
+        }
+    }
+}
+
+tasks.register('downloadModels') {
+    def out = file("$buildDir/generated/models")
+    outputs.dir(out)
+    doLast {
+        out.mkdirs()
+        def url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+        def dest = new File(out, "hand_landmarker.task")
+        if (!dest.exists() || dest.length() < 1_000_000) {
+            new URL(url).withInputStream { input -> dest.withOutputStream { it << input } }
+        }
+    }
+}
+
+tasks.named('preBuild').configure { dependsOn 'syncAircontrolPython', 'downloadModels' }

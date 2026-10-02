@@ -1,0 +1,43 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["android/**", "aircontrol/**", ".github/workflows/android.yml"]
+  push:
+    branches: [main]
+    paths: ["android/**", "aircontrol/**", ".github/workflows/android.yml"]
+    tags: ["v*"]          # v0.2.0 -> añade el APK a la release
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: actions/setup-python@v5            # Chaquopy necesita un Python en la máquina de compilación para instalar numpy
+        with: { python-version: "3.11" }
+      - uses: android-actions/setup-android@v3   # SDK de Android y aceptación de licencias en el servidor de CI
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.14.3" }
+      - name: Compilar el APK
+        run: gradle -p android assembleDebug --no-daemon --stacktrace
+      - name: Nombre y tamaño
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk AirControl-Android.apk
+          ls -la AirControl-Android.apk
+          unzip -l AirControl-Android.apk | grep -E "libpython|libmediapipe|hand_landmarker|android_main|aircontrol/" | head -20
+      - uses: actions/upload-artifact@v4
+        with: { name: AirControl-Android, path: AirControl-Android.apk }
+      - name: Añadir el APK a la release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AirControl-Android.apk
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
