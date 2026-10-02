@@ -1,6 +1,11 @@
+import os
 import sys
+import time
 
-import cv2
+# Media Foundation tarda ~3 s en abrir con las transformaciones por hardware y a veces no entrega nada: se desactivan.
+os.environ.setdefault("OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS", "0")
+
+import cv2  # noqa: E402  (tras fijar la variable de entorno)
 
 
 def _preferred_backend():
@@ -12,24 +17,95 @@ def _preferred_backend():
     return cv2.CAP_ANY
 
 
+def _lit_frame_within(cap, seconds, clock=time.monotonic):
+    """True si en `seconds` llega algún fotograma con imagen (no negro): hay cámaras cuyo modo por defecto abre bien
+    pero entrega negro o 1 fotograma por segundo (p. ej. el 640x480 de algunas webcams integradas en Windows)."""
+    deadline = clock() + seconds
+    while clock() < deadline:
+        ok, frame = cap.read()
+        if ok and frame is not None and int(frame[::8, ::8].max()) > CameraHealth.BLACK_MAX:
+            return True
+    return False
+
+
 class Camera:
-    def __init__(self, settings):
-        index = settings.camera_index
-        self.cap = cv2.VideoCapture(index, _preferred_backend())
-        if not self.cap.isOpened():
-            self.cap.release()
-            self.cap = cv2.VideoCapture(index)
-        if not self.cap.isOpened():
+    # Modos a probar si el pedido no da imagen (los 16:9 suelen funcionar en webcams cuyo 4:3 va mal).
+    FALLBACK_MODES = ((1280, 720), (1920, 1080), (1024, 768), (800, 600))
+    PROBE_SECONDS = 2.0
+    MAX_WIDTH_FACTOR = 1.3              # si la imagen es más ancha que esto x frame_width se reduce (más rápido)
+
+    def __init__(self, settings, open_capture=None, clock=time.monotonic):
+        self._open_capture = open_capture or self._open_default
+        self._clock = clock
+        self.target_width = settings.frame_width
+        self.note = None                # texto para el log si hubo que cambiar de modo
+        wanted = (settings.frame_width, settings.frame_height)
+        self.cap, self.mode = self._open_working(settings.camera_index, wanted)
+
+    @staticmethod
+    def _open_default(index, kind="native"):
+        if kind == "msmf":
+            return cv2.VideoCapture(index, cv2.CAP_MSMF)
+        cap = cv2.VideoCapture(index, _preferred_backend())
+        if not cap.isOpened():
+            cap.release()
+            cap = cv2.VideoCapture(index)
+        return cap
+
+    def _open_at(self, index, size, kind="native"):
+        cap = self._open_capture(index, kind)
+        if not cap.isOpened():
+            cap.release()
             raise RuntimeError(
                 f"No se pudo abrir la cámara {index}. En macOS revisa Ajustes > Privacidad y seguridad > Cámara; "
-                "si tienes varias prueba con \"camera_index\": 1 en settings.json.")
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, settings.frame_width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, settings.frame_height)
+                "en Windows, Configuración > Privacidad > Cámara. Si tienes varias prueba con "
+                "\"camera_index\": 1 en settings.json.")
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
+        return cap
+
+    def _attempts(self, wanted):
+        """(backend, modo) en orden: lo pedido; en Windows Media Foundation a 720p (el que usa la app Cámara de
+        Windows y el único que va bien en algunas webcams integradas); y luego otros modos con el backend nativo."""
+        seq = [("native", wanted)]
+        if sys.platform == "win32":
+            seq.append(("msmf", (1280, 720)))
+        seq += [("native", size) for size in self.FALLBACK_MODES]
+        return seq
+
+    def _open_working(self, index, wanted):
+        """Abre la cámara en el modo pedido; si no entrega imagen, prueba otros y se queda con el primero que sí."""
+        tried = set()
+        for n, (kind, size) in enumerate(self._attempts(wanted)):
+            if n and (kind, size) in tried:
+                continue
+            cap = self._open_at(index, size, kind)
+            actual = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+            if n and actual != (0, 0) and (kind, actual) in tried:
+                cap.release()                                       # la cámara redondeó a un modo ya probado
+                continue
+            tried.update({(kind, size), (kind, actual)})
+            if _lit_frame_within(cap, self.PROBE_SECONDS, self._clock):
+                if n:
+                    how = " con Media Foundation" if kind == "msmf" else ""
+                    self.note = (f"La cámara no daba imagen en {wanted[0]}x{wanted[1]}; se usa "
+                                 f"{actual[0]}x{actual[1]}{how} (la imagen se reduce a {self.target_width} px de ancho).")
+                return cap, actual
+            cap.release()
+        # Ningún modo da imagen: vuelve al pedido y deja que CameraHealth avise al usuario.
+        return self._open_at(index, wanted), wanted
 
     def read(self):
         """Fotograma espejado (mover la mano a la derecha mueve el cursor a la derecha)."""
         ok, frame = self.cap.read()
-        return (True, cv2.flip(frame, 1)) if ok else (False, None)
+        if not ok:
+            return False, None
+        frame = cv2.flip(frame, 1)
+        h, w = frame.shape[:2]
+        if w > self.target_width * self.MAX_WIDTH_FACTOR:
+            frame = cv2.resize(frame, (self.target_width, round(self.target_width * h / w)),
+                               interpolation=cv2.INTER_AREA)
+        return True, frame
 
     def release(self):
         self.cap.release()

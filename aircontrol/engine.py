@@ -73,6 +73,8 @@ class Engine:
             if self.camera is None:
                 from .camera import Camera
                 self.camera = Camera(self.settings)
+                if getattr(self.camera, "note", None):
+                    self.log(f"ℹ️  {self.camera.note}")
             if self.hands is None:
                 from .hands import HandTracker
                 self.hands = HandTracker()
@@ -293,7 +295,8 @@ class Engine:
                 self.window.set_geometry(x, y, w, h)
             return draw_keyboard(self.ctl.keyboard, self.ctl.kb_uv, now, size=(w, h))
         if self.window:
-            self.window.set_geometry(self.screen[0] - PREVIEW_SIZE[0] - 20, 40, *PREVIEW_SIZE)
+            ph = round(PREVIEW_SIZE[0] * frame.shape[0] / frame.shape[1])              # respeta 4:3 o 16:9
+            self.window.set_geometry(self.screen[0] - PREVIEW_SIZE[0] - 20, 40, PREVIEW_SIZE[0], ph)
         img = draw(frame, hand, status, self.settings)
         if self.debug:
             draw_debug(img, self.ctl.mouse, status)
