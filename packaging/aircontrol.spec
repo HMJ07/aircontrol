@@ -55,7 +55,7 @@ if sys.platform == "darwin":
         bundle_identifier="com.aircontrol.app",
         info_plist={
             "CFBundleDisplayName": APP_NAME,
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleShortVersionString": "0.1.1",
             "NSHighResolutionCapable": True,
             # Sin esta clave macOS deniega la cámara sin ni siquiera preguntar.
             "NSCameraUsageDescription": "AirControl usa la cámara para seguir tu mano y tu mirada y controlar el "
