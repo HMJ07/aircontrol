@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest import mock
 
 WIN = sys.platform == "win32"
 if WIN:
@@ -57,10 +58,26 @@ class WindowsInputTests(unittest.TestCase):
         self.assertFalse(self.system.focus_app("no_existe_este_programa.exe"))
         self.assertFalse(self.system.focus_app(""))
 
-    def test_beep_is_non_blocking(self):
-        t = time.time()
-        self.system.beep()
-        self.assertLess(time.time() - t, 0.2)
+    def test_beep_runs_in_another_thread_and_does_not_wait_for_it(self):
+        """Sin relojes (un servidor cargado hacía fallar un umbral de 0,2 s): el pitido (simulado, bloqueado hasta que
+        lo soltamos) se ejecuta en OTRO hilo y beep() vuelve sin esperar a que termine."""
+        import threading
+        import winsound
+        started, release, finished, thread_ids = threading.Event(), threading.Event(), threading.Event(), []
+
+        def slow_beep(freq, ms):
+            thread_ids.append(threading.get_ident())
+            started.set()
+            release.wait(10)
+            finished.set()
+
+        with mock.patch.object(winsound, "Beep", slow_beep):
+            self.system.beep()
+            self.assertTrue(started.wait(10), "el pitido nunca arrancó")
+            self.assertFalse(finished.is_set())                       # beep() ya volvió y el pitido sigue en curso
+            self.assertNotEqual(thread_ids[0], threading.get_ident())
+            release.set()
+            self.assertTrue(finished.wait(10))
 
     def test_opencv_has_topmost_property_for_the_floating_window(self):
         import cv2
