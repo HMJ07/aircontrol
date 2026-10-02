@@ -79,6 +79,8 @@ class Settings:
     dwell_radius_px: float = 70.0
     # Teclado aéreo
     keyboard_dwell_s: float = 0.9
+    # Móvil como cámara
+    remote_port: int = 8443
     # Voz
     voice_mode: str = "off"              # off | push (gesto/menú) | wake (palabra de activación)
     voice_wake_word: str = "control"
@@ -166,7 +168,7 @@ LIMITS = {
     "double_click_s": (0.2, 1.5), "scroll_gain": (2.0, 100.0), "scroll_extension": (1.0, 1.8),
     "scroll_enter_s": (0.0, 1.5),
     "gaze_min_cutoff": (0.05, 5.0), "gaze_beta": (0.0, 0.2), "dwell_s": (0.3, 4.0), "dwell_radius_px": (20.0, 250.0),
-    "keyboard_dwell_s": (0.3, 3.0),
+    "keyboard_dwell_s": (0.3, 3.0), "remote_port": (1024, 65535),
     "gesture_threshold": (0.2, 1.5), "gesture_hold_s": (0.2, 3.0), "pause_hold_s": (0.5, 4.0),
     "swipe_distance": (0.1, 0.8),
 }
@@ -191,6 +193,7 @@ META = {
     "gaze_beta": ("Reactividad de la mirada", "Mirada"), "gaze_click": ("Cómo hacer clic con la mirada", "Mirada"),
     "dwell_s": ("Clic por permanencia: segundos", "Mirada"), "dwell_radius_px": ("Clic por permanencia: radio (px)", "Mirada"),
     "keyboard_dwell_s": ("Teclado: segundos para pulsar una tecla con la mirada", "Teclado aéreo"),
+    "remote_port": ("Puerto HTTPS del móvil como cámara", "Móvil"),
     "voice_mode": ("Activación de la voz", "Voz"), "voice_wake_word": ("Palabra de activación", "Voz"),
     "voice_language": ("Idioma", "Voz"), "whisper_model": ("Modelo de reconocimiento (tiny=rápido, small=preciso)", "Voz"),
     "ollama_model": ("Modelo de Ollama (vacío = el primero instalado)", "Voz"),

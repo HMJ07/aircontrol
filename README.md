@@ -113,6 +113,20 @@ Todo se configura desde la página de ajustes, sin editar ficheros:
 4. Los **números (1–0) están en la fila de arriba**. `123` abre símbolos (`@ # $ ( ) ¿ ¡ € …`) y `abc` vuelve. ⇧ pone en mayúscula la siguiente letra; ⌫ y las flechas se repiten si las mantienes. Arriba aparecen 3 sugerencias de palabras.
 5. **✕** o 🤙 de nuevo lo cierran.
 
+### Móvil como cámara (Android e iPhone)
+
+Usa la cámara de tu móvil para controlar el ordenador, **sin instalar nada**: es una página web.
+
+1. En el ordenador: **Ajustes → Control → Activar móvil como cámara** (o `python main.py run --remote`). Aparece un QR.
+2. Escanéalo con el móvil (misma Wi-Fi). El navegador avisará de que el certificado no es de confianza: es el de tu propio ordenador. Acéptalo (Android: *Avanzado → Continuar*; iPhone: *Mostrar detalles → Visitar este sitio web*).
+3. Pulsa **Empezar** y concede la cámara. Pon el móvil frente a ti, como una webcam.
+
+La mano y la cara se detectan **en el móvil** y solo se envían los puntos (unos cientos de bytes por fotograma), nunca vídeo. La pantalla del móvil tiene botones de pausa, mano/mirada y teclado, y las calibraciones funcionan igual. Cuando la mirada está activa, el móvil también envía la cara.
+
+**Seguridad:** esto puede mover el ratón y pulsar teclas, así que solo se activa si lo pides, va por HTTPS, exige un token aleatorio que solo está en el QR (cambia en cada arranque), admite un único móvil a la vez y se desactiva con el mismo botón. Quien tenga ese QR y esté en tu red podría controlar el ordenador: no lo compartas.
+
+**Límites:** hace falta la misma red Wi-Fi; el móvil descarga la librería de MediaPipe la primera vez (necesita internet); mantén la pantalla encendida (la página lo pide); la voz todavía no sale del móvil. Está probado con un navegador de escritorio en modo demostración y con pruebas automáticas; **falta probarlo con la cámara de un móvil real**. Más en [docs/MOBILE.md](docs/MOBILE.md).
+
 ### Voz
 
 Actívala en **Ajustes → Voz**:

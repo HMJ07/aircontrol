@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>AirControl · Móvil</title>
+<style>
+  :root { --bg:#111418; --card:#1c2026; --ink:#eef0f3; --mute:#9aa0a8; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#3b82f6; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.4 -apple-system,system-ui,sans-serif; padding:env(safe-area-inset-top) 16px 24px; }
+  h1 { font-size:20px; margin:18px 0 4px; } p { color:var(--mute); margin:4px 0 12px; }
+  .pill { display:inline-block; padding:5px 14px; border-radius:99px; background:#2a2f37; font-size:14px; font-weight:600; }
+  .pill.ok { background:var(--ok); color:#04200d; } .pill.warn { background:var(--warn); color:#2b1a00; } .pill.bad { background:var(--bad); }
+  button { font:inherit; border:0; border-radius:14px; padding:16px 18px; background:var(--card); color:var(--ink); width:100%; margin:6px 0; }
+  button.primary { background:var(--accent); font-weight:700; } button.on { outline:2px solid var(--ok); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; } .grid button { margin:0; }
+  .cam { position:relative; margin:12px 0; border-radius:14px; overflow:hidden; background:#000; }
+  video, canvas { width:100%; display:block; transform:scaleX(-1); } canvas { position:absolute; inset:0; }
+  #fps, #action { color:var(--mute); font-size:14px; min-height:20px; }
+  .tip { background:var(--card); border-radius:14px; padding:12px 14px; font-size:15px; color:var(--mute); }
+</style>
+</head>
+<body>
+<h1>AirControl en el móvil</h1>
+<span id="state" class="pill">Listo</span> <span id="pc" style="color:var(--mute);font-size:14px"></span>
+<p>Pon el móvil frente a ti, como una webcam. La mano y la cara se detectan <b>en el móvil</b> y solo se envían los puntos al ordenador: el vídeo no sale de aquí.</p>
+<button id="start" class="primary">Empezar</button>
+<div id="demo" hidden class="tip">Modo demostración: se envía una mano simulada, sin cámara.</div>
+<div class="cam"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
+<div id="fps"></div><div id="action"></div>
+<div id="controls" hidden>
+  <div class="grid"><button id="pause">Pausar</button><button id="mode">Puntero: mano</button></div>
+  <button id="kb">Teclado aéreo</button>
+</div>
+<div class="tip" style="margin-top:14px">Consejos: apoya el móvil de pie, a la altura de la cara, con buena luz y sin que se apague la pantalla.
+Cierra esta página para dejar de enviar.</div>
+<script type="module" src="remote.js"></script>
+</body>
+</html>

@@ -15,7 +15,12 @@ from tests.test_engine import sandbox
 
 class FakeEngine:
     def __init__(self, running=True):
-        self._running, self.calls = running, []
+        self._running, self.calls, self.args = running, [], ()
+
+    def restart(self, *a):
+        self.calls.append(("restart", *a))
+        self.args = tuple(a)
+        self._running = True
 
     def running(self): return self._running
     def start(self, *a): self._running = True; self.calls.append("start")
@@ -187,6 +192,30 @@ class WebTests(unittest.TestCase):
                 break
             time.sleep(0.02)
         self.assertIn(("blocking", "calibrate", "hand"), self.engine.calls)
+
+    def test_remote_card_state_qr_and_toggle(self):
+        self.login()
+        off = self.client.get("/api/remote", headers=self.h).get_json()
+        self.assertEqual((off["enabled"], off["connected"]), (False, False))
+        self.assertNotIn("svg", off)
+        self.assertEqual(self.post("/api/remote", {"enable": True}).status_code, 200)
+        self.assertEqual(self.engine.calls[-1], ("restart", "--remote"))
+        url = "https://192.168.1.50:8443/remote/#t=abc"
+        ipc.write_json(ipc.STATE_PATH, {"updated": time.time(), "paused": False,
+                                        "remote": {"url": url, "connected": True}})
+        on = self.client.get("/api/remote", headers=self.h).get_json()
+        self.assertTrue(on["enabled"] and on["connected"])
+        self.assertEqual(on["url"], url)
+        self.assertIn("<svg", on["svg"])
+        self.assertEqual(self.post("/api/remote", {"enable": False}).status_code, 200)
+        self.assertEqual(self.engine.calls[-1], ("restart",))              # sin --remote: vuelve a la cámara normal
+
+    def test_remote_needs_the_csrf_token_and_is_blocked_while_busy(self):
+        self.login()
+        self.assertEqual(self.client.post("/api/remote", json={"enable": True}, headers=self.h).status_code, 403)
+        self.ctx.busy = "entrenando"
+        self.assertEqual(self.post("/api/remote", {"enable": True}).status_code, 409)
+        self.assertEqual(self.engine.calls, [])
 
     def test_busy_blocks_second_job(self):
         self.ctx.busy = "algo"

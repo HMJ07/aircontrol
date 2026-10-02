@@ -5,3 +5,5 @@ pynput>=1.7.7
 pystray>=0.19.5
 Pillow>=10.0.0
 flask>=3.0.0
+cryptography>=42.0.0
+segno>=1.6.0

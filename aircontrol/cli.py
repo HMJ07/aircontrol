@@ -21,7 +21,8 @@ def _window_closed():
 
 def cmd_run(args):
     from .engine import Engine
-    return Engine(dry_run=args.dry_run, preview=not args.no_preview, camera_index=args.camera).run()
+    return Engine(dry_run=args.dry_run, preview=not args.no_preview, camera_index=args.camera,
+                  remote=True if args.remote else None).run()
 
 
 def cmd_calibrate(args):
@@ -553,6 +554,18 @@ def cmd_selftest(_args):
         import sounddevice  # noqa: F401
     step("voz: órdenes y respaldo", "motor de voz incluido" if voice else "motor de voz NO incluido en esta compilación")
     assert (launcher.WEB_DIR / "index.html").exists(), "falta la página de ajustes dentro del instalador"
+    from . import remote
+    for name in ("index.html", "remote.js", "payload.js"):
+        assert (launcher.WEB_DIR / "remote" / name).exists(), f"falta la página del móvil ({name}) dentro del instalador"
+    import tempfile
+    from pathlib import Path
+    tmp = Path(tempfile.mkdtemp())
+    remote.ensure_cert(tmp, "127.0.0.1")                         # cryptography va dentro del instalador y genera el certificado
+    hub = remote.RemoteHub()
+    hello = remote.create_app(hub, "t", launcher.WEB_DIR / "remote", tmp).test_client().get("/api/hello", headers={"X-Token": "t"})
+    assert hello.status_code == 200 and hello.get_json()["face_keys"], "el receptor del móvil no responde"
+    assert "<svg" in remote.qr_svg("https://127.0.0.1:8443/remote/#t=t"), "segno no genera el QR"
+    step("móvil como cámara", "receptor, certificado y QR")
     app = launcher.create_web_app(launcher.AppContext(launcher.EngineProcess(["true"])))
     client = app.test_client()
     assert client.get("/api/state", headers={"Host": "127.0.0.1"}).status_code == 403, "la web no exige token"
@@ -573,6 +586,8 @@ def main(argv=None):
     run.add_argument("--dry-run", action="store_true", help="no mueve el ratón ni pulsa teclas: solo lo muestra")
     run.add_argument("--no-preview", action="store_true", help="sin ventana de vista previa (Ctrl+C para salir)")
     run.add_argument("--camera", type=int, help="índice de la cámara")
+    run.add_argument("--remote", action="store_true",
+                     help="usa el móvil como cámara y mando (Android o iPhone, desde el navegador; misma Wi-Fi)")
     run.set_defaults(func=cmd_run)
 
     cal = sub.add_parser("calibrate", help="calibración guiada de la mano o de la mirada")

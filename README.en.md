@@ -83,6 +83,12 @@ Actions: `key:mod+c` (`mod` = ⌘ on macOS, Ctrl on Windows) · `click` · `righ
 
 Voice model (~140 MB) downloads the first time voice is enabled (internet needed once). Ollama is optional.
 
+## Phone as camera (Android and iPhone)
+
+Use your phone's camera to control the computer, **nothing to install** — it is a web page. Computer: **Settings → Control → Activate phone as camera** (or `python main.py run --remote`) and scan the QR with the phone (same Wi-Fi). The browser will warn about the certificate (it is your own computer's: accept it; Android *Advanced → Continue*, iPhone *Show Details → Visit this website*). Tap **Start**, allow the camera, and place the phone in front of you like a webcam.
+
+Hand and face are detected **on the phone**; only the points are sent (a few hundred bytes per frame), never video. **Security:** it is opt-in, uses HTTPS, requires a random token that only exists in the QR (new on each start), accepts one phone at a time, and is turned off with the same button — anyone with that QR on your network could control the computer, so do not share it. **Limits:** same Wi-Fi; the phone downloads the MediaPipe library the first time; keep the screen on; voice does not come from the phone yet. Tested with a desktop browser in demo mode and automated tests; **not yet tested with a real phone camera**. See [docs/MOBILE.md](docs/MOBILE.md).
+
 ## Troubleshooting
 
 A test page (`python main.py playground`: buttons, drag, scroll, text and tiles that show every event) and two **real** checks that tell you what is happening and which setting to change (run from source):
