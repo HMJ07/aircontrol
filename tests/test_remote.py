@@ -272,7 +272,7 @@ class JavaScriptContractTests(unittest.TestCase):
 
     def build(self, with_face):
         script = f"""
-        import {{ buildPayload, demoHand }} from "{WEB / 'payload.js'}";
+        import {{ buildPayload, demoHand }} from "{(WEB / 'payload.js').as_uri()}";
         const keys = {json.dumps(FACE_KEYS)};
         const face = Array.from({{ length: 478 }}, (_, i) => ({{ x: 0.3 + i / 5000, y: 0.4 + i / 7000, z: -0.01 }}));
         const p = buildPayload({{ t: 1234.6, width: 640, height: 360, handLandmarks: demoHand(0.5, 0.5, true),
