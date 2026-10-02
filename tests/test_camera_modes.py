@@ -16,7 +16,8 @@ class Clock:
 
 
 class FakeCap:
-    """Webcam simulada: cada modo (ancho, alto) es 'lit' (imagen), 'black' (negro) o 'dead' (sin fotogramas)."""
+    """Webcam simulada: cada modo (ancho, alto) es 'lit' (imagen), 'black' (negro), 'sparse' (negro con un píxel
+    encendido) o 'dead' (sin fotogramas)."""
 
     def __init__(self, clock, modes, kind="native", opened=True, default=(640, 480), round_to=None):
         self.clock, self.modes, self.opened, self.kind = clock, modes, opened, kind
@@ -44,7 +45,10 @@ class FakeCap:
         if kind == "dead":
             return False, None
         w, h = self.size
-        return True, np.full((h, w, 3), 120 if kind == "lit" else 0, np.uint8)
+        frame = np.full((h, w, 3), 120 if kind == "lit" else 0, np.uint8)
+        if kind == "sparse":
+            frame[0, 0] = 255                                         # un píxel suelto no es imagen
+        return True, frame
 
     def release(self):
         self.released = True
@@ -67,13 +71,15 @@ class CameraModeTests(unittest.TestCase):
     def test_requested_mode_is_kept_when_it_works(self):
         cam, caps = make_camera({(640, 480): "lit", (1280, 720): "lit"})
         self.assertEqual(cam.mode, (640, 480))
-        self.assertIsNone(cam.note)
+        self.assertIn("640x480", cam.note)
+        self.assertNotIn("sin imagen", cam.note)
         self.assertEqual(len(caps), 1)
 
     def test_falls_back_to_a_mode_that_gives_image(self):
         cam, _ = make_camera({(640, 480): "black", (1280, 720): "lit"})        # la webcam del usuario
         self.assertEqual(cam.mode, (1280, 720))
         self.assertIn("1280x720", cam.note)
+        self.assertIn("sin imagen en 640x480", cam.note)
         ok, frame = cam.read()
         self.assertTrue(ok)
         self.assertEqual(frame.shape, (360, 640, 3))                              # reducida a 640 de ancho, 16:9
@@ -82,6 +88,32 @@ class CameraModeTests(unittest.TestCase):
     def test_falls_back_when_the_requested_mode_returns_no_frames(self):
         cam, _ = make_camera({(640, 480): "dead", (1280, 720): "lit"})
         self.assertEqual(cam.mode, (1280, 720))
+
+    def test_black_frames_with_a_stray_pixel_are_not_an_image(self):
+        # visto en la webcam real: el modo roto devolvía negro con algún píxel suelto y se daba por bueno
+        cam, _ = make_camera({(640, 480): "sparse", (1280, 720): "lit"})
+        self.assertEqual(cam.mode, (1280, 720))
+
+    def test_a_single_good_frame_is_not_enough(self):
+        class Flaky(FakeCap):
+            reads = 0
+
+            def read(self):
+                ok, f = super().read()
+                Flaky.reads += 1
+                return ok, f if Flaky.reads % 4 == 1 else np.zeros_like(f)        # 1 fotograma bueno de cada 4
+
+        clock = Clock()
+        cams = []
+
+        def opener(index, kind="native"):
+            cap = Flaky(clock, {(640, 480): "lit", (1280, 720): "lit"}, kind=kind)
+            cams.append(cap)
+            return cap
+
+        with mock.patch("aircontrol.camera.sys.platform", "linux"):
+            cam = Camera(Settings(), open_capture=opener, clock=clock)
+        self.assertIn("ningún modo", cam.note)                                    # nunca junta 3 fotogramas buenos
 
     def test_small_frames_are_not_resized(self):
         cam, _ = make_camera({(640, 480): "lit"})
@@ -99,25 +131,33 @@ class CameraModeTests(unittest.TestCase):
     def test_when_nothing_gives_image_it_returns_to_the_requested_mode(self):
         cam, _ = make_camera({})
         self.assertEqual(cam.mode, (640, 480))
-        self.assertIsNone(cam.note)
+        self.assertIn("ningún modo", cam.note)
         self.assertEqual(cam.read(), (False, None))                               # CameraHealth avisará al usuario
 
-    def test_on_windows_media_foundation_at_720p_is_tried_before_other_modes(self):
-        # la HP del usuario: 640x480 negro con DirectShow, pero MSMF a 1280x720 va bien (y DirectShow 720p a 8 fps)
-        modes = {("native", (640, 480)): "black", ("msmf", (1280, 720)): "lit", ("native", (1280, 720)): "lit"}
+    def test_on_windows_media_foundation_at_720p_is_tried_first(self):
+        # la HP del usuario: 640x480 roto en DirectShow; MSMF a 1280x720 va bien (y abrirlo tras soltar DirectShow
+        # tardaba 15 s, por eso va primero)
+        modes = {("native", (640, 480)): "black", ("msmf", (1280, 720)): "lit"}
         cam, caps = make_camera(modes, platform="win32")
         self.assertEqual(cam.mode, (1280, 720))
-        self.assertEqual(caps[-1].kind, "msmf")
+        self.assertEqual([c.kind for c in caps], ["msmf"])                        # una sola apertura
         self.assertIn("Media Foundation", cam.note)
-        self.assertEqual(len(caps), 2)
+        self.assertNotIn("sin imagen", cam.note)
 
     def test_media_foundation_is_not_used_outside_windows(self):
         modes = {("native", (640, 480)): "black", ("msmf", (1280, 720)): "lit", ("native", (1280, 720)): "lit"}
-        cam, caps = make_camera(modes, platform="darwin")
-        self.assertTrue(all(c.kind == "native" for c in caps))
+        for platform in ("darwin", "linux"):
+            cam, caps = make_camera(modes, platform=platform)
+            self.assertTrue(all(c.kind == "native" for c in caps), platform)
 
-    def test_windows_falls_through_to_native_modes_when_msmf_fails_too(self):
-        modes = {("native", (640, 480)): "black", ("msmf", (1280, 720)): "dead", ("native", (1280, 720)): "lit"}
+    def test_windows_falls_back_to_the_requested_native_mode_when_msmf_fails(self):
+        modes = {("msmf", (1280, 720)): "dead", ("native", (640, 480)): "lit"}
+        cam, caps = make_camera(modes, platform="win32")
+        self.assertEqual((cam.mode, caps[-1].kind), ((640, 480), "native"))
+        self.assertIn("sin imagen en 1280x720 MSMF", cam.note)
+
+    def test_windows_falls_through_to_native_720p_when_everything_else_fails(self):
+        modes = {("msmf", (1280, 720)): "dead", ("native", (640, 480)): "black", ("native", (1280, 720)): "lit"}
         cam, caps = make_camera(modes, platform="win32")
         self.assertEqual((cam.mode, caps[-1].kind), ((1280, 720), "native"))
 
@@ -126,6 +166,29 @@ class CameraModeTests(unittest.TestCase):
             make_camera({}, opened=False)
         self.assertIn("Privacidad", str(cm.exception))
 
+
+
+class MsmfEnvTests(unittest.TestCase):
+    def test_hw_transforms_are_disabled_on_windows_before_opencv_is_imported(self):
+        # Si esto no se fija en aircontrol/__init__.py (antes de `import cv2`), Media Foundation tarda ~15 s en abrir.
+        import importlib
+        import os
+        import aircontrol
+        key = "OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"
+        with mock.patch.dict(os.environ):
+            os.environ.pop(key, None)
+            with mock.patch("sys.platform", "win32"):
+                importlib.reload(aircontrol)
+            self.assertEqual(os.environ.get(key), "0")
+            os.environ[key] = "1"                                                    # el usuario manda
+            with mock.patch("sys.platform", "win32"):
+                importlib.reload(aircontrol)
+            self.assertEqual(os.environ.get(key), "1")
+            os.environ.pop(key, None)
+            with mock.patch("sys.platform", "darwin"):
+                importlib.reload(aircontrol)
+            self.assertNotIn(key, os.environ)
+        importlib.reload(aircontrol)
 
 if __name__ == "__main__":
     unittest.main()
