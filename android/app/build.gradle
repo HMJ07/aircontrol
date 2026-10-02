@@ -71,3 +71,9 @@ tasks.register('downloadModels') {
 }
 
 tasks.named('preBuild').configure { dependsOn 'syncAircontrolPython', 'downloadModels' }
+
+// Gradle valida que quien LEE una carpeta dependa de quien la ESCRIBE: lo declaramos para el Python de Chaquopy y para los assets.
+tasks.matching { it.name.startsWith('merge') && it.name.contains('PythonSources') }.configureEach { dependsOn 'syncAircontrolPython' }
+tasks.matching { it.name.startsWith('generate') && it.name.contains('Python') }.configureEach { dependsOn 'syncAircontrolPython' }
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach { dependsOn 'downloadModels' }
+tasks.matching { it.name.startsWith('lintVitalAnalyze') || it.name.startsWith('lintAnalyze') }.configureEach { dependsOn 'syncAircontrolPython', 'downloadModels' }
