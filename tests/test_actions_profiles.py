@@ -112,14 +112,14 @@ class ProfilesTests(unittest.TestCase):
         untouched = d / "a.json"
         untouched.write_text(json.dumps(LEGACY_DEFAULTS[0]))
         self.assertTrue(Profiles.load(untouched).migrated)
-        self.assertEqual(json.loads(untouched.read_text()), DEFAULT_PROFILES)
+        self.assertEqual(json.loads(untouched.read_text(encoding="utf-8")), DEFAULT_PROFILES)
         self.assertFalse(Profiles.load(untouched).migrated)                     # ya está al día
         edited = json.loads(json.dumps(LEGACY_DEFAULTS[0]))
         edited["profiles"][0]["bindings"]["swipe_up"] = "key:mod+t"          # el usuario cambió algo a propósito
         mine = d / "b.json"
         mine.write_text(json.dumps(edited))
         self.assertFalse(Profiles.load(mine).migrated)
-        self.assertEqual(json.loads(mine.read_text()), edited)                  # no se pisa nada del usuario
+        self.assertEqual(json.loads(mine.read_text(encoding="utf-8")), edited)                  # no se pisa nada del usuario
 
     def test_pinky_up_opens_keyboard_even_with_an_old_profile_file(self):
         old = {"default": {"thumbs_up": "click"}, "profiles": []}              # perfil de una versión anterior

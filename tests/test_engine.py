@@ -207,7 +207,7 @@ class CalibrationFlowTests(unittest.TestCase):
             self.drive(eng, 6, t0=t)
             self.assertIsNone(eng.cal)
             self.assertFalse(eng.window.fullscreen)
-            saved = json.loads((d / "settings.json").read_text())
+            saved = json.loads((d / "settings.json").read_text(encoding="utf-8"))
             self.assertGreater(saved["region_x1"] - saved["region_x0"], 0.4)
             self.assertEqual(eng.settings.region_x0, saved["region_x0"])
 
@@ -258,7 +258,7 @@ class CalibrationFlowTests(unittest.TestCase):
             eng = make(face_fn=lambda ts: looking_at(rng.uniform(0, 1), rng.uniform(0, 1)))
             eng.command("calibrate:gaze")
             self.drive(eng, 30)
-            self.assertEqual((d / "gaze.json").read_text(), good)
+            self.assertEqual((d / "gaze.json").read_text(encoding="utf-8"), good)
             self.assertIsNotNone(eng.ctl.gaze)
 
     def test_escape_cancels_calibration_without_saving(self):
