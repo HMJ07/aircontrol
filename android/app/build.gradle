@@ -38,7 +38,10 @@ android {
 }
 
 dependencies {
-    implementation 'androidx.core:core-ktx:1.19.1'
+    // core 1.19.x exige AGP 9.1 y compileSdk 37; 1.17.0 es la última que encaja con AGP 8.13 / compileSdk 36. Fijada de forma
+    // estricta para que ninguna otra librería arrastre una más nueva por debajo.
+    implementation('androidx.core:core-ktx') { version { strictly '1.17.0' } }
+    implementation('androidx.core:core') { version { strictly '1.17.0' } }
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'androidx.lifecycle:lifecycle-service:2.10.0'
     implementation 'androidx.camera:camera-core:1.5.3'
