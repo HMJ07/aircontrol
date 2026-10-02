@@ -1,7 +1,7 @@
 ; Inno Setup: instalador de Windows (doble clic -> Siguiente -> Instalar), sin permisos de administrador.
 [Setup]
 AppName=AirControl
-AppVersion=0.1.0
+AppVersion=0.1.1
 DefaultDirName={autopf}\AirControl
 DefaultGroupName=AirControl
 PrivilegesRequired=lowest
