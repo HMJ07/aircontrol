@@ -23,6 +23,7 @@ class InputBackend:
     def media(self, name): raise NotImplementedError
     def open_target(self, target): open_target(target)
     def focus_app(self, name): return focus_app(name)
+    def nav(self, name): pass                      # Atrás/Inicio/Recientes: solo tiene sentido en Android
 
     def apply(self, event):
         """Aplica un evento de AirMouse: ("move", x, y) · ("click", botón, n) · ("press"/"release", botón) · ("scroll", dx, dy)."""
@@ -53,6 +54,7 @@ class DryRunBackend(InputBackend):
     def media(self, name): self._note("media", name)
     def open_target(self, target): self._note("open", target)
     def focus_app(self, name): self._note("focus", name); return True
+    def nav(self, name): self._note("nav", name)
 
 
 class PynputBackend(InputBackend):

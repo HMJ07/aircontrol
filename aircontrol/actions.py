@@ -7,6 +7,7 @@
   open:Safari  open:https://...              abre una aplicación o una dirección
   text:hola                                   escribe texto
   pause · resume · toggle_pause               control de AirControl
+  nav:back|home|recents|notifications|quick_settings   navegación del sistema (Android)
   mode:hand|gaze|toggle                       puntero con la mano o con la mirada
   keyboard                                    abre/cierra el teclado aéreo
   voice                                       escucha una orden de voz
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 MEDIA = ("play_pause", "next", "prev", "volume_up", "volume_down", "mute")
 SIMPLE = ("click", "right_click", "double_click", "pause", "resume", "toggle_pause", "keyboard", "voice")
 MODES = ("hand", "gaze", "toggle")
+NAV = ("back", "home", "recents", "notifications", "quick_settings")
 MODIFIERS = {"ctrl": "ctrl", "control": "ctrl", "shift": "shift", "alt": "alt", "option": "alt", "opt": "alt",
              "cmd": "cmd", "command": "cmd", "win": "cmd", "super": "cmd", "meta": "cmd"}
 KEY_ALIASES = {"esc": "esc", "escape": "esc", "enter": "enter", "return": "enter", "tab": "tab", "space": "space",
@@ -85,6 +87,10 @@ def parse_action(spec, platform=None):
         if arg.strip() not in MODES:
             raise ActionError(f"mode necesita {', '.join(MODES)}: '{spec}'")
         return Action("mode", arg.strip(), spec)
+    if kind == "nav":
+        if arg.strip() not in NAV:
+            raise ActionError(f"nav necesita {', '.join(NAV)}: '{spec}'")
+        return Action("nav", arg.strip(), spec)
     if kind == "media":
         if arg.strip() not in MEDIA:
             raise ActionError(f"media desconocido '{arg}' (usa: {', '.join(MEDIA)})")
@@ -114,6 +120,8 @@ class ActionRunner:
             b.scroll(0, action.arg)
         elif action.kind == "media":
             b.media(action.arg)
+        elif action.kind == "nav":
+            b.nav(action.arg)
         elif action.kind == "open":
             b.open_target(action.arg)
         elif action.kind == "text":

@@ -2,11 +2,14 @@
 Cada función delega en macos.py o windows.py; en otros sistemas hay valores por defecto para poder desarrollar."""
 import sys
 
-if sys.platform == "darwin":
-    from . import macos as _os
-elif sys.platform == "win32":
-    from . import windows as _os
-else:
+try:
+    if sys.platform == "darwin":
+        from . import macos as _os
+    elif sys.platform == "win32":
+        from . import windows as _os
+    else:
+        _os = None
+except ImportError:           # p. ej. la app Android empaqueta solo parte del paquete: sin módulo del SO, valores por defecto
     _os = None
 
 ACCESSIBILITY_HELP = (

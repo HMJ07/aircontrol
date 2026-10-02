@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AirControl</string>
+    <string name="accessibility_description">Permite que AirControl toque, deslice y navegue por el teléfono con la mano que ve la cámara frontal. Las imágenes se procesan en el teléfono y nunca se envían ni se guardan.</string>
+</resources>
