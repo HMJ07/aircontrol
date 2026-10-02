@@ -8,6 +8,7 @@ import numpy as np
 
 from . import config, ipc, system
 from .actions import ActionError, parse_action
+from .camera import CameraHealth
 from .controller import Controller
 from .fsutil import write_text_atomic
 from .gaze import CLOSED_EAR, GazeModel, GazeCalibration, extract_features
@@ -15,7 +16,7 @@ from .gestures import GestureStore
 from .handcal import CORNERS, HandCalibration
 from .profiles import Profiles
 from .runtime import show_error
-from .ui import draw, draw_calibration, draw_debug, draw_keyboard
+from .ui import draw, draw_calibration, draw_debug, draw_keyboard, draw_notice
 
 PREVIEW_SIZE = (480, 360)
 RESULT_SECONDS = 3.5
@@ -49,6 +50,8 @@ class Engine:
         self._fps, self._last_frame = 0.0, None
         self._voice_key = None
         self._voice_warned = False
+        self._camera_issue = None
+        self._camera_health = None
 
     # --- arranque ----------------------------------------------------------------------------
     def setup(self):
@@ -320,7 +323,11 @@ class Engine:
         try:
             while not self._quit and (max_frames is None or frames < max_frames):
                 ok, frame = self.camera.read()
+                self._check_camera(ok, frame)
                 if not ok:
+                    # Sin fotogramas la ventana sigue atendiendo eventos (si no, Windows la marca "no responde").
+                    if self._pump_window(self._blank() if self._camera_issue else None):
+                        break
                     time.sleep(0.01)
                     frames += 1
                     continue
@@ -339,23 +346,49 @@ class Engine:
                     for cmd in self.commands.poll():
                         self.command(cmd)
                 self._publish(now, self.ctl.status)
-                if self.window:
-                    if img is not None:
-                        self.window.show(img)
-                    key = self.window.key()
-                    if key == 27 and self.cal is not None:
-                        self._end_calibration()
-                    elif key in (ord("q"), 27) or self.window.closed():
-                        break
-                    elif key == ord("d"):
-                        self.debug = not self.debug
-                    elif key == ord("k"):
-                        self.ctl._control("keyboard")
+                if self._camera_issue and img is not None:
+                    draw_notice(img, self._camera_issue)
+                if self._pump_window(img):
+                    break
         except KeyboardInterrupt:
             pass
         finally:
             self.shutdown()
         return 0
+
+    def _check_camera(self, ok, frame):
+        """Avisa (log + franja en la vista previa) si la cámara no da imagen útil; se limpia sola al recuperarse."""
+        if self._camera_health is None:
+            self._camera_health = CameraHealth()
+        issue = self._camera_health.update(ok, frame, time.monotonic())
+        if issue != self._camera_issue:
+            self._camera_issue = issue
+            self.log(f"⚠️  {' '.join(issue)}" if issue else "✅ La cámara vuelve a dar imagen.")
+
+    def _blank(self):
+        key = (self._camera_issue, self.settings.frame_width, self.settings.frame_height)
+        if getattr(self, "_blank_key", None) != key:
+            self._blank_key = key
+            self._blank_img = draw_notice(np.zeros((key[2], key[1], 3), np.uint8), self._camera_issue)
+        return self._blank_img
+
+    def _pump_window(self, img):
+        """Muestra `img` (si hay) y atiende teclado/ventana. Devuelve True si hay que salir."""
+        if not self.window:
+            return False
+        if img is not None:
+            self.window.show(img)
+        key = self.window.key()
+        if key == 27 and self.cal is not None:
+            self._end_calibration()
+        elif key in (ord("q"), 27) or self.window.closed():
+            self.log("ℹ️  Ventana de vista previa cerrada: el control se detiene.")
+            return True
+        elif key == ord("d"):
+            self.debug = not self.debug
+        elif key == ord("k"):
+            self.ctl._control("keyboard")
+        return False
 
     def shutdown(self):
         try:

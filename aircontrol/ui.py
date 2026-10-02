@@ -13,6 +13,17 @@ MODE_LABELS = {"idle": "REPOSO", "point": "PUNTERO", "pinch": "CLIC", "drag": "A
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 
+def draw_notice(img, lines):
+    """Aviso en una franja en el centro de la imagen (texto ASCII: la fuente de OpenCV no tiene acentos)."""
+    h, w = img.shape[:2]
+    top = h // 2 - 22 * len(lines)
+    cv2.rectangle(img, (0, max(top - 12, 0)), (w, min(top + 30 * len(lines) + 4, h)), (0, 0, 120), -1)
+    for i, line in enumerate(lines):
+        scale = min(0.6, (w - 24) / (19 * max(len(line), 1)))     # ~19 px por carácter a escala 1.0
+        cv2.putText(img, line, (12, top + 24 + 28 * i), FONT, scale, (255, 255, 255), 1, cv2.LINE_AA)
+    return img
+
+
 def draw(frame, lm, status, settings):
     h, w = frame.shape[:2]
     color = MODE_COLORS.get(status.mode, (255, 255, 255))

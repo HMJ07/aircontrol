@@ -33,3 +33,30 @@ class Camera:
 
     def release(self):
         self.cap.release()
+
+
+class CameraHealth:
+    """Detecta una cámara que abre pero no entrega imagen útil (obturador de privacidad, otra app que la tiene en
+    exclusiva, driver colgado): sin esto la ventana se queda en negro y no se sabe por qué."""
+    BLACK_MAX = 3                       # un fotograma cuyo píxel más claro es <= 3 se considera negro
+    NO_FRAMES = ("La camara no entrega fotogramas.",
+                 "Cierra otras apps que la usen y reinicia AirControl.")
+    BLACK = ("La camara devuelve imagen negra.",
+             "Revisa el obturador o la tecla de privacidad y que otra app no la use.")
+
+    def __init__(self, grace=3.0):
+        self.grace = grace              # los primeros segundos pueden ser negros mientras se enciende
+        self._last_good = None
+        self._seen_frame = False
+
+    def update(self, ok, frame, now):
+        """Devuelve None si todo va bien, o las líneas (ASCII) del aviso a mostrar."""
+        if self._last_good is None:
+            self._last_good = now
+        if ok and frame is not None:
+            self._seen_frame = True
+            if int(frame[::8, ::8].max()) > self.BLACK_MAX:
+                self._last_good = now
+        if now - self._last_good <= self.grace:
+            return None
+        return self.BLACK if self._seen_frame else self.NO_FRAMES
