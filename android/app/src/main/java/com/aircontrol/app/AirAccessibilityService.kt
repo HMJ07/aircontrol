@@ -88,17 +88,17 @@ class AirAccessibilityService : AccessibilityService() {
             val v = cursor ?: return@post
             p.x = x - cursorSize / 2
             p.y = y - cursorSize / 2
-            v.pressed = dragActive
+            v.dragging = dragActive
             try { windowManager?.updateViewLayout(v, p) } catch (_: Exception) {}
         }
     }
 
     private class CursorView(context: Context) : View(context) {
-        var pressed = false
+        var dragging = false                       // (no se llama `pressed`: chocaría con View.setPressed)
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 4f; color = 0xFFFFFFFF.toInt() }
         override fun onDraw(canvas: Canvas) {
-            fill.color = if (pressed) 0xCCFF8C00.toInt() else 0x8800C896.toInt()
+            fill.color = if (dragging) 0xCCFF8C00.toInt() else 0x8800C896.toInt()
             val c = width / 2f
             canvas.drawCircle(c, c, c - 4f, fill)
             canvas.drawCircle(c, c, c - 4f, ring)
